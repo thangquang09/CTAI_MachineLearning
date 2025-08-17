@@ -20,14 +20,11 @@ class CustomDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, index):
-        idx=self.data.loc[index, 'idx']
-        sent1 = preprocess_text(str(self.data.loc[index, 'id1_text']))
-        sent2 = preprocess_text(str(self.data.loc[index, 'id2_text']))
-        #nếu dùng id:
-        # sent1 =str(self.data.loc[index, 'id1'])+' '+str(self.data.loc[index, 'sentence1'])
-        # sent2 =str(self.data.loc[index, 'id2'])+' '+str(self.data.loc[index, 'sentence2'])
+        idx=self.data.loc[index, 'id']
+        sent1 = preprocess_text(str(self.data.loc[index, 'text1']))
+        sent2 = preprocess_text(str(self.data.loc[index, 'text2']))
         if self.with_labels:  # True if the dataset has labels
-            labels = self.data.loc[index, 'Label']
+            labels = self.data.loc[index, 'label']
             return sent1, sent2, labels, idx
         else:
             return sent1, sent2, idx
@@ -45,13 +42,13 @@ class Get_Loader:
 
     def load_train_dev(self):
         train_df=pd.read_csv(self.train_path)
-        answer_space = list(np.unique(train_df['Label']))
+        answer_space = list(np.unique(train_df['label']))
         # answer_space = ['SUPPORTED','NEI','REFUTED']
         label_to_index = {label: index for index, label in enumerate(answer_space)}
-        train_df['Label'] = train_df['Label'].map(label_to_index)
+        train_df['label'] = train_df['label'].map(label_to_index)
 
         val_df=pd.read_csv(self.val_path)
-        val_df['Label'] = val_df['Label'].map(label_to_index)
+        val_df['label'] = val_df['label'].map(label_to_index)
         print("Reading training data...")
         train_set = CustomDataset(train_df)
         print("Reading validation data...")
@@ -71,6 +68,6 @@ class Get_Loader:
 def create_ans_space(config: Dict):
     train_path=os.path.join(config['data']['dataset_folder'],config['data']['train_dataset'])
     train_df=pd.read_csv(train_path)
-    answer_space = list(np.unique(train_df['Label']))
+    answer_space = list(np.unique(train_df['label']))
     # answer_space = ['SUPPORTED','NEI','REFUTED']
     return answer_space
