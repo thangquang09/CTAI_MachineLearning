@@ -1,33 +1,39 @@
 # ----------------------------- IMPORTS ------------------------------------
+import math
 import os
+import random
 import re
 import warnings
-import random
-import numpy as np
-import pandas as pd
-from pathlib import Path
-from tqdm.auto import tqdm
 from collections import Counter
+from pathlib import Path
+
 import joblib
-import math
+import lightgbm as lgb
 
 # NLP
 import nltk
+import numpy as np
+import optuna
+import pandas as pd
 import textstat
-from nltk.corpus import stopwords
-from nltk.stem import WordNetLemmatizer
-from nltk.tokenize import word_tokenize, sent_tokenize
 
 # Deep Learning
 import torch
-from transformers import AutoTokenizer, AutoModel
-
-# ML & utils
-from sklearn.model_selection import StratifiedKFold, GridSearchCV
+from langdetect import DetectorFactory, detect
+from langdetect.lang_detect_exception import LangDetectException
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+from nltk.tokenize import sent_tokenize, word_tokenize
+from scipy.sparse import csr_matrix, hstack
 from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+# ML & utils
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.pipeline import Pipeline
-from scipy.sparse import hstack, csr_matrix
+from tqdm.auto import tqdm
+from transformers import AutoModel, AutoTokenizer
 
 warnings.filterwarnings("ignore")
 nltk.download("punkt", quiet=True)
@@ -38,6 +44,7 @@ SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
 torch.manual_seed(SEED)
+DetectorFactory.seed = SEED
 
 
 # ----------------------- DATA LOADING ------------------------------------
@@ -114,6 +121,30 @@ def preprocess_text_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ----------------------- RULE-BASED FEATURES ------------------------------
+def calculate_english_ratio(text: str) -> float:
+    """
+    Tính toán tỷ lệ các từ trong văn bản được nhận dạng là tiếng Anh.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return 0.0
+    
+    words = text.split()
+    if not words:
+        return 0.0
+        
+    english_word_count = 0
+    for word in words:
+        try:
+            # Kiểm tra ngôn ngữ của từng từ
+            if detect(word) == 'en':
+                english_word_count += 1
+        except LangDetectException:
+            # Bỏ qua các từ quá ngắn hoặc không thể nhận dạng
+            continue
+            
+    return english_word_count / len(words)
+
+
 def compute_rule_based_features(text: str) -> dict:
     """Tính toán các đặc trưng rule-based cho một văn bản."""
     if not isinstance(text, str):
@@ -176,11 +207,15 @@ def compute_rule_based_features(text: str) -> dict:
     suspicious_entities = ["china relay", "rainbow unicorn", "santa", "north pole"]
     suspicious_count = sum(text.lower().count(entity) for entity in suspicious_entities)
 
+    # 5. English words ratio
+    english_word_ratio = calculate_english_ratio(text)
+
     return {
         "char_count": char_count,
         "word_count": word_count,
         "sentence_count": sentence_count,
         "avg_sentence_length": avg_sentence_length,
+        "english_word_ratio": english_word_ratio,
         # Multi-script features
         "cyrillic_count": cyrillic_count,
         "arabic_count": arabic_count,
@@ -399,6 +434,10 @@ def extract_top_features(df: pd.DataFrame) -> np.ndarray:
         latin_ratio_ratio = np.clip(latin_ratio_ratio, 0.1, 10.0)
         feature_row.append(latin_ratio_ratio)
         
+        # 18. diff_english_word_ratio
+        english_word_ratio_diff = abs(f1['english_word_ratio'] - f2['english_word_ratio'])
+        feature_row.append(english_word_ratio_diff)
+
         # Add individual features as well
         feature_row.extend([
             f1['unique_word_count_ratio'], f2['unique_word_count_ratio'],
@@ -787,28 +826,50 @@ def prepare_data_for_model(
 
 
 # ----------------------- MODEL TRAINING -----------------------------------
-def train_and_evaluate(X, y, clf_model, param_grid):
-    """Cross-validate + grid search, trả về best model."""
-    clf = Pipeline(
-        [
-            ("select", SelectKBest(f_classif, k=min(20_000, X.shape[1]))),
-            ("clf", clf_model),
-        ]
-    )
+def train_and_evaluate_lgbm(X, y):
+    """Huấn luyện và đánh giá LightGBM với Optuna."""
+    
+    def objective(trial):
+        params = {
+            'objective': 'binary',
+            'metric': 'accuracy',
+            'random_state': SEED,
+            'n_estimators': 2000,
+            'verbosity': -1,
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.05),
+            'num_leaves': trial.suggest_int('num_leaves', 20, 150),
+            'feature_fraction': trial.suggest_float('feature_fraction', 0.7, 1.0),
+            'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 10.0, log=True),
+            'lambda_l2': trial.suggest_float('lambda_l2', 1e-8, 10.0, log=True),
+        }
+        
+        skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
+        scores = []
+        for train_idx, val_idx in skf.split(X, y):
+            X_train, y_train = X[train_idx], y[train_idx]
+            X_val, y_val = X[val_idx], y[val_idx]
+            
+            model = lgb.LGBMClassifier(**params)
+            model.fit(X_train, y_train,
+                      eval_set=[(X_val, y_val)],
+                      eval_metric='accuracy',
+                      callbacks=[lgb.early_stopping(100, verbose=False)])
+            preds = model.predict(X_val)
+            scores.append(accuracy_score(y_val, preds))
+            
+        return np.mean(scores)
 
-    skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
-    grid = GridSearchCV(
-        estimator=clf,
-        param_grid=param_grid,
-        scoring="accuracy",
-        cv=skf,
-        n_jobs=-1,
-        verbose=2,
-    )
-    grid.fit(X, y)
-    print(f"Best CV accuracy: {grid.best_score_:.4f}")
-    print(f"Best params: {grid.best_params_}")
-    return grid.best_estimator_
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=50) # Chạy 50 lần thử
+    
+    print(f"Best CV accuracy: {study.best_value:.4f}")
+    print(f"Best params: {study.best_params}")
+    
+    # Huấn luyện mô hình cuối cùng với tham số tốt nhất trên toàn bộ dữ liệu
+    best_model = lgb.LGBMClassifier(**study.best_params, n_estimators=2000, random_state=SEED)
+    best_model.fit(X, y) # Không cần early stopping ở đây
+    
+    return best_model
 
 
 def save_model_and_artifacts(
@@ -873,19 +934,19 @@ def main(embedding_model_name: str = "bert-base-uncased"):
         df_test, embedding_extractor=embedding_extractor, fit_embedding=False
     )
 
-    # Define model and parameters
-    clf_model = LogisticRegression(
-        max_iter=5_000, solver="liblinear", n_jobs=-1, random_state=SEED
-    )
-    param_grid = {
-        "select__k": [10_000, 15_000, 20_000],
-        "clf__C": [0.1, 0.5, 1, 2, 5],
-        "clf__penalty": ["l1", "l2"],
-    }
+    # # Define model and parameters
+    # clf_model = LogisticRegression(
+    #     max_iter=5_000, solver="liblinear", n_jobs=-1, random_state=SEED
+    # )
+    # param_grid = {
+    #     "select__k": [10_000, 15_000, 20_000],
+    #     "clf__C": [0.1, 0.5, 1, 2, 5],
+    #     "clf__penalty": ["l1", "l2"],
+    # }
 
     # Train model
-    print("Training model...")
-    model = train_and_evaluate(X_train, y_train, clf_model, param_grid)
+    print("Training LightGBM model with Optuna...")
+    model = train_and_evaluate_lgbm(X_train, y_train)
 
     # Retrain on full data
     print("Retraining on full data...")
