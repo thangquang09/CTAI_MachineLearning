@@ -1,75 +1,108 @@
 import torch
 from torch import nn
-from torch.nn import functional as F
-from transformers import T5Tokenizer,T5EncoderModel,T5ForConditionalGeneration,T5Model
+from transformers import T5Tokenizer, T5Model
 from typing import List, Dict, Optional
 from mask.masking import generate_padding_mask
 from data_utils.vocab import create_vocab
-from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training, TaskType
 
-def Text_tokenizer(config):
+# ✅ peft API mới
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
+
+
+def Text_tokenizer(config: Dict):
     tokenizer = T5Tokenizer.from_pretrained(config["text_embedding"]["text_encoder"])
-    new_tokens,_ = create_vocab(config)
-    new_tokens = set(new_tokens) - set(tokenizer.get_vocab().keys())
-    tokenizer.add_tokens(list(new_tokens))
+    new_tokens, _ = create_vocab(config)
+    new_tokens = list(set(new_tokens) - set(tokenizer.get_vocab().keys()))
+    if len(new_tokens) > 0:
+        tokenizer.add_tokens(new_tokens)
     return tokenizer
 
-#design for vit5, pretrained in english also supported 
+
 class T5_Embedding(nn.Module):
-    def __init__(self, config: Dict, max_len: int=None):
-        super(T5_Embedding,self).__init__()
-        if config["text_embedding"]["add_new_token"]:
+    """
+    Thiết kế cho viT5 / T5 tiếng Anh.
+    """
+    def __init__(self, config: Dict, max_len: Optional[int] = None):
+        super().__init__()
+
+        text_cfg = config["text_embedding"]
+        tok_cfg = config["tokenizer"]
+
+        # --- Tokenizer & backbone ---
+        if text_cfg.get("add_new_token", False):
             self.tokenizer = Text_tokenizer(config)
-            self.embedding = T5Model.from_pretrained(config["text_embedding"]["text_encoder"])
+            self.embedding = T5Model.from_pretrained(text_cfg["text_encoder"])
             self.embedding.resize_token_embeddings(len(self.tokenizer))
         else:
-            self.tokenizer = T5Tokenizer.from_pretrained(config["text_embedding"]["text_encoder"])
-            self.embedding = T5Model.from_pretrained(config["text_embedding"]["text_encoder"])
-        # freeze all parameters of pretrained model
-        if config['text_embedding']['freeze']:
-            for param in self.embedding.parameters():
-                param.requires_grad = False
+            self.tokenizer = T5Tokenizer.from_pretrained(text_cfg["text_encoder"])
+            self.embedding = T5Model.from_pretrained(text_cfg["text_encoder"])
 
-        if config['text_embedding']['freeze']==False and config['text_embedding']['use_lora']==True:
-            lora_config = LoraConfig(
-                r=config['text_embedding']['lora_r'],
-                lora_alpha=config['text_embedding']['lora_alpha'],
-                # target_modules=config['text_embedding']['lora_target_modules'],
-                lora_dropout=config['text_embedding']['lora_dropout'],
-                bias="none",
-                task_type=TaskType.SEQ_CLS,
-            )
-            # self.embedding = prepare_model_for_int8_training(self.embedding)
-            self.embedding = get_peft_model(self.embedding, lora_config)
+        # --- Freeze hoặc LoRA ---
+        if text_cfg.get("freeze", False):
+            for p in self.embedding.parameters():
+                p.requires_grad = False
+        else:
+            if text_cfg.get("use_lora", True):
+                # Chuẩn bị k-bit training (4/8 bit). Nếu model không load bằng bitsandbytes thì sẽ bỏ qua.
+                try:
+                    self.embedding = prepare_model_for_kbit_training(self.embedding)
+                except Exception:
+                    pass
 
-        self.proj = nn.Linear(config["text_embedding"]['d_features'], config["text_embedding"]['d_model'])
+                lora_kwargs = {
+                    "r": text_cfg.get("lora_r", 8),
+                    "lora_alpha": text_cfg.get("lora_alpha", 16),
+                    "lora_dropout": text_cfg.get("lora_dropout", 0.05),
+                    "bias": "none",
+                    "task_type": TaskType.SEQ_2_SEQ_LM,  # với T5 hợp lý hơn SEQ_CLS
+                }
+                target_modules = text_cfg.get("lora_target_modules", None)
+                if target_modules:
+                    lora_kwargs["target_modules"] = target_modules
+
+                lora_config = LoraConfig(**lora_kwargs)
+                self.embedding = get_peft_model(self.embedding, lora_config)
+
+        # --- Projection & layers ---
+        self.proj = nn.Linear(text_cfg["d_features"], text_cfg["d_model"])
         self.gelu = nn.GELU()
-        self.dropout = nn.Dropout(config["text_embedding"]['dropout'])
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
-        self.padding = config["tokenizer"]["padding"]
-        self.truncation = config["tokenizer"]["truncation"]
-        if max_len is None:
-            self.max_length = config["tokenizer"]["max_length"]
-        else:
-            self.max_length=max_len
-        
-    def forward(self, text1: List[str], text2: List[str]=None):
+        self.dropout = nn.Dropout(text_cfg["dropout"])
+
+        # --- Tokenizer runtime options ---
+        self.padding = tok_cfg.get("padding", True)
+        self.truncation = tok_cfg.get("truncation", True)
+        self.max_length = max_len if max_len is not None else tok_cfg.get("max_length", 128)
+
+        # Device từ backbone
+        self.device = next(self.embedding.parameters()).device if next(self.embedding.parameters(), None) is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.to(self.device)
+
+    def forward(self, text1: List[str], text2: Optional[List[str]] = None):
         if text2 is not None:
-            input_ids = self.tokenizer(
-                            text1,text2,
-                            max_length=self.max_length,
-                            truncation = self.truncation,
-                            return_tensors='pt', padding=self.padding).input_ids.to(self.device)
+            inputs = self.tokenizer(
+                text1, text2,
+                max_length=self.max_length,
+                truncation=self.truncation,
+                return_tensors="pt",
+                padding=self.padding,
+            )
         else:
-            input_ids = self.tokenizer(
-                            text=text1,
-                            max_length=self.max_length,
-                            truncation = self.truncation,
-                            return_tensors='pt', padding=self.padding).input_ids.to(self.device)
-            
+            inputs = self.tokenizer(
+                text=text1,
+                max_length=self.max_length,
+                truncation=self.truncation,
+                return_tensors="pt",
+                padding=self.padding,
+            )
+
+        input_ids = inputs["input_ids"].to(self.device)
+
+        # Padding mask
         padding_mask = generate_padding_mask(input_ids, padding_idx=self.tokenizer.pad_token_id)
+
+        # Lấy hidden states từ encoder
         features = self.embedding.encoder(input_ids=input_ids).last_hidden_state
+
         features = self.proj(features)
         out = self.dropout(self.gelu(features))
         return out, padding_mask
