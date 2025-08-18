@@ -46,7 +46,7 @@ class Predict:
                 sent2 = list(sent2) if isinstance(sent2, torch.Tensor) else sent2
 
                 # forward
-                logits, _ = self.model(sent1, sent2)
+                logits = self.model(sent1, sent2)
 
                 # argmax để lấy nhãn dự đoán
                 preds = logits.argmax(dim=-1).cpu().numpy()
