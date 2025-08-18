@@ -1,49 +1,65 @@
 import os
 import logging
-from typing import Text, Dict, List
+from typing import Dict, List
 import pandas as pd
 import torch
+from tqdm import tqdm
 import transformers
 from model.init_model import get_model
-from data_utils.load_data import Get_Loader
-from tqdm import tqdm
-from data_utils.load_data import create_ans_space
+from data_utils.load_data import Get_Loader, create_ans_space
+
 
 class Predict:
     def __init__(self, config: Dict):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.answer_space=create_ans_space(config)
-        self.checkpoint_path=os.path.join(config["train"]["output_dir"], "best_model.pth")
-        self.model = get_model(config, num_labels = len(self.answer_space))
+        self.answer_space = create_ans_space(config)
+        self.checkpoint_path = os.path.join(config["train"]["output_dir"], "best_model.pth")
+        self.model = get_model(config, num_labels=len(self.answer_space))
+        self.model.to(self.device)
         self.dataloader = Get_Loader(config)
+
     def predict_submission(self):
+        # tắt logging của transformers
         transformers.logging.set_verbosity_error()
         logging.basicConfig(level=logging.INFO)
-    
-        # Load the model
+
+        # Load checkpoint (chỉ weights)
         logging.info("Loading the best model...")
-        checkpoint = torch.load(self.checkpoint_path)
+        checkpoint = torch.load(self.checkpoint_path, weights_only=True)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.to(self.device)
-
-        # Obtain the prediction from the model
-        logging.info("Obtaining predictions...")
-        test =self.dataloader.load_test()
-        submits=[]
-        ids=[]
         self.model.eval()
+
+        # Load test data
+        test_loader = self.dataloader.load_test()
+
+        submits: List[str] = []
+        ids: List[int] = []
+
+        logging.info("Obtaining predictions...")
         with torch.no_grad():
-            for it, (sent1, sent2, id) in enumerate(tqdm(test)):
-                with torch.autocast(device_type='cuda', dtype=torch.float32, enabled=True):
-                    logits = self.model(sent1,sent2)
-                preds = logits.argmax(axis=-1).cpu().numpy()
+            for sent1, sent2, id_batch in tqdm(test_loader):
+                # convert sang list nếu DataLoader trả tensor
+                sent1 = list(sent1) if isinstance(sent1, torch.Tensor) else sent1
+                sent2 = list(sent2) if isinstance(sent2, torch.Tensor) else sent2
+
+                # forward
+                logits, _ = self.model(sent1, sent2)
+
+                # argmax đúng
+                preds = logits.argmax(dim=-1).cpu().numpy()
+
+                # map về label
                 answers = [self.answer_space[i] for i in preds]
                 submits.extend(answers)
-                if isinstance(id, torch.Tensor):
-                    ids.extend(id.tolist())
+
+                # xử lý id
+                if isinstance(id_batch, torch.Tensor):
+                    ids.extend(id_batch.tolist())
                 else:
-                    ids.extend(id)
-                    
-        data = {'id': ids,'label': submits }
-        df = pd.DataFrame(data)
+                    ids.extend(id_batch)
+
+        # lưu file submission
+        df = pd.DataFrame({'id': ids, 'label': submits})
         df.to_csv('./submission.csv', index=False)
+        logging.info("Submission saved to ./submission.csv")
