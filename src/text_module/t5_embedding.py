@@ -73,71 +73,47 @@ class T5_Embedding(nn.Module):
         self.truncation = tok_cfg.get("truncation", True)
         self.max_length = max_len if max_len is not None else tok_cfg.get("max_length", 128)
 
-        # Device từ backbone
-        self.device = next(self.embedding.parameters()).device if next(self.embedding.parameters(), None) is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.to(self.device)
+        # Device từ backbone - sẽ được update trong forward
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def forward(self, text1: List[str], text2: Optional[List[str]] = None):
+        # Update device from current model location
+        self.device = next(self.embedding.parameters()).device
+        
         if text2 is not None:
-            # Tokenize text1 và text2 riêng biệt với max_length/2 mỗi cái để đảm bảo đóng góp bằng nhau
+            # Approach đơn giản hơn: truncate mỗi text về max_length/2 trước khi nối
             half_length = self.max_length // 2
             
-            # Tokenize text1 với half_length
-            inputs1 = self.tokenizer(
-                text1,
-                max_length=half_length,
+            # Truncate text1 và text2 về độ dài bằng nhau
+            truncated_text1 = []
+            truncated_text2 = []
+            
+            for t1, t2 in zip(text1, text2):
+                # Tokenize để đếm tokens
+                tokens1 = self.tokenizer.tokenize(t1)
+                tokens2 = self.tokenizer.tokenize(t2)
+                
+                # Truncate về half_length - 1 (để chừa chỗ cho special tokens)
+                max_tokens = half_length - 1
+                if len(tokens1) > max_tokens:
+                    tokens1 = tokens1[:max_tokens]
+                if len(tokens2) > max_tokens:
+                    tokens2 = tokens2[:max_tokens]
+                
+                # Convert back to text
+                truncated_text1.append(self.tokenizer.convert_tokens_to_string(tokens1))
+                truncated_text2.append(self.tokenizer.convert_tokens_to_string(tokens2))
+            
+            # Bây giờ tokenize với text đã truncate
+            inputs = self.tokenizer(
+                truncated_text1, truncated_text2,
+                max_length=self.max_length,
                 truncation=self.truncation,
                 return_tensors="pt",
-                padding="max_length",  # Đảm bảo padding đến half_length
+                padding=self.padding,
             )
             
-            # Tokenize text2 với half_length
-            inputs2 = self.tokenizer(
-                text2,
-                max_length=half_length,
-                truncation=self.truncation,
-                return_tensors="pt",
-                padding="max_length",  # Đảm bảo padding đến half_length
-            )
-            
-            # T5 không có CLS token, chỉ cần concatenate trực tiếp
-            # Loại bỏ EOS token cuối của text1 và concatenate với text2
-            input_ids1 = inputs1["input_ids"]  # [batch_size, half_length]
-            input_ids2 = inputs2["input_ids"]  # [batch_size, half_length]
-            
-            # Tìm vị trí EOS token trong text1 để loại bỏ
-            eos_token_id = self.tokenizer.eos_token_id
-            
-            # Tạo mask để loại bỏ EOS token cuối của text1
-            batch_size = input_ids1.shape[0]
-            combined_ids = []
-            
-            for i in range(batch_size):
-                # Tìm vị trí EOS token cuối trong text1
-                text1_ids = input_ids1[i]
-                text2_ids = input_ids2[i]
-                
-                # Loại bỏ EOS token cuối của text1 nếu có
-                eos_positions = (text1_ids == eos_token_id).nonzero(as_tuple=True)[0]
-                if len(eos_positions) > 0:
-                    last_eos_pos = eos_positions[-1]
-                    text1_ids = text1_ids[:last_eos_pos]
-                
-                # Concatenate text1 + text2
-                combined = torch.cat([text1_ids, text2_ids])
-                
-                # Truncate nếu vượt quá max_length
-                if len(combined) > self.max_length:
-                    combined = combined[:self.max_length]
-                # Pad nếu thiếu
-                elif len(combined) < self.max_length:
-                    pad_length = self.max_length - len(combined)
-                    pad_tokens = torch.full((pad_length,), self.tokenizer.pad_token_id, dtype=combined.dtype)
-                    combined = torch.cat([combined, pad_tokens])
-                
-                combined_ids.append(combined)
-            
-            input_ids = torch.stack(combined_ids).to(self.device)
+            input_ids = inputs["input_ids"].to(self.device)
             
         else:
             inputs = self.tokenizer(
