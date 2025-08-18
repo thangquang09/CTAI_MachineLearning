@@ -1,10 +1,12 @@
 import os
 import logging
 from typing import Dict, List
+
 import pandas as pd
 import torch
 from tqdm import tqdm
 import transformers
+
 from model.init_model import get_model
 from data_utils.load_data import Get_Loader, create_ans_space
 
@@ -23,9 +25,9 @@ class Predict:
         transformers.logging.set_verbosity_error()
         logging.basicConfig(level=logging.INFO)
 
-        # Load checkpoint (chỉ weights)
+        # Load checkpoint (toàn bộ object, weights_only=False)
         logging.info("Loading the best model...")
-        checkpoint = torch.load(self.checkpoint_path, weights_only=True)
+        checkpoint = torch.load(self.checkpoint_path, weights_only=False)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.model.to(self.device)
         self.model.eval()
@@ -33,8 +35,8 @@ class Predict:
         # Load test data
         test_loader = self.dataloader.load_test()
 
-        submits: List[str] = []
         ids: List[int] = []
+        submits: List[str] = []
 
         logging.info("Obtaining predictions...")
         with torch.no_grad():
@@ -46,10 +48,8 @@ class Predict:
                 # forward
                 logits, _ = self.model(sent1, sent2)
 
-                # argmax đúng
+                # argmax để lấy nhãn dự đoán
                 preds = logits.argmax(dim=-1).cpu().numpy()
-
-                # map về label
                 answers = [self.answer_space[i] for i in preds]
                 submits.extend(answers)
 
