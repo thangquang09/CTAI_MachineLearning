@@ -14,9 +14,9 @@ def main(config_path: Text) -> None:
     with open(config_path) as conf_file:
         config = yaml.safe_load(conf_file)
     
-    # logging.info("training started...")
-    # NLI_Task(config).training()
-    # logging.info("training complete")
+    logging.info("training started...")
+    NLI_Task(config).training()
+    logging.info("training complete")
     
     logging.info('now evaluate on test data...')
     Predict(config).predict_submission()
