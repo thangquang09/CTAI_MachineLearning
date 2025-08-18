@@ -38,7 +38,7 @@ class NLI_Task:
         if os.path.exists(os.path.join(self.save_path, 'last_model.pth')):
             checkpoint = torch.load(os.path.join(self.save_path, 'last_model.pth'))
             self.base_model.load_state_dict(checkpoint['model_state_dict'])
-            self.optimizer.load_state_dict(checkpoint['self.optimizer_state_dict'])
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             print('loaded the last saved model!!!')
             initial_epoch = checkpoint['epoch'] + 1
             print(f"continue training from epoch {initial_epoch}")
@@ -69,6 +69,7 @@ class NLI_Task:
             self.scheduler.step()
             train_loss /=len(train)
 
+            self.base_model.eval()
             with torch.no_grad():
                 for it, (sent1, sent2, labels, id) in enumerate(tqdm(valid)):
                     with torch.autocast(device_type='cuda', dtype=torch.float32, enabled=True):
@@ -79,6 +80,9 @@ class NLI_Task:
                     
             valid_acc /= len(valid)
             valid_f1 /= len(valid)
+            
+            # Set back to train mode for next epoch
+            self.base_model.train()
 
             print(f"epoch {epoch + 1}/{self.num_epochs + initial_epoch}")
             print(f"train loss: {train_loss:.4f}")
@@ -98,11 +102,11 @@ class NLI_Task:
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.base_model.state_dict(),
-                'self.optimizer_state_dict': self.optimizer.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict(),
                 'score': score}, os.path.join(self.save_path, 'last_model.pth'))
             
             # save the best model
-            if epoch > 0 and score <= best_score:
+            if score <= best_score:
               threshold += 1
             else:
               threshold = 0
@@ -112,7 +116,7 @@ class NLI_Task:
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': self.base_model.state_dict(),
-                    'self.optimizer_state_dict': self.optimizer.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
                     'score':score}, os.path.join(self.save_path, 'best_model.pth'))
                 print(f"saved the best model with {self.best_metric} of {score:.4f}")
             
