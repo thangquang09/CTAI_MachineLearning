@@ -1,0 +1,56 @@
+data:
+  dataset_folder: data
+  train_dataset: train.csv
+  val_dataset: dev.csv
+  test_dataset: test.csv
+  use_id: False  # If True, use ID information; if False, ignore ID
+
+xgboost:
+  n_estimators: 100        # Number of boosting rounds
+  max_depth: 6             # Maximum tree depth
+  learning_rate: 0.1       # Step size shrinkage
+  subsample: 0.8           # Subsample ratio of training instances
+  colsample_bytree: 0.8    # Subsample ratio of columns when constructing each tree
+  reg_alpha: 0.0           # L1 regularization term on weights
+  reg_lambda: 1.0          # L2 regularization term on weights
+
+tokenizer:
+  padding: max_length
+  max_length: 512
+  truncation: True
+  return_attention_mask: True
+
+text_embedding:
+  type: pretrained  # Options: pretrained, tf_idf, count_vec
+  add_new_token: False
+  text_encoder: distilbert/distilbert-base-uncased
+  freeze: False
+  use_lora: False
+  # LoRA configs (only used when use_lora: True)
+  lora_target_modules: ["q", "v"]  # Common: ["q", "k", "v", "o"] for attention
+  lora_r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  d_features: 768  # DistilBERT hidden size
+  d_model: 512     # Project to this dimension
+  dropout: 0.2
+
+model:
+  type_model: xgboost
+  intermediate_dims: 512
+  dropout: 0.2
+
+train:
+  output_dir: checkpoint
+  seed: 12345
+  num_train_epochs: 100
+  patience: 5
+  learning_rate: 2.0e-5     # For neural network components (text embedding)
+  weight_decay: 0.0
+  metric_for_best_model: accuracy
+  per_device_train_batch_size: 32
+  per_device_valid_batch_size: 32
+
+inference:
+  test_dataset: data/test.csv  # Should match data.test_dataset path
+  batch_size: 64

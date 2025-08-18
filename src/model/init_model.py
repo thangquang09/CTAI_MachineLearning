@@ -1,4 +1,5 @@
 from model.svm_model import createSVM_Model,SVM_Model
+from model.xgboost_model import createXGBoost_Model,XGBoost_Model
 from model.trans_uni_modal_model import createTrans_Model,Trans_Model
 from model.transformer_svm_model import createTrans_SVM_Model,Trans_SVM_Model
 from model.bert_cnn_model import createText_CNN_Model,Text_CNN_Model
@@ -11,6 +12,8 @@ from model.llama_model import createLlama_Model,Llama_Model
 def build_model(config, answer_space):
     if config['model']['type_model']=='svm':
         return createSVM_Model(config, answer_space)
+    if config['model']['type_model']=='xgboost':
+        return createXGBoost_Model(config, answer_space)
     if config['model']['type_model']=='trans_uni':
         return createTrans_Model(config, answer_space)
     if config['model']['type_model']=='trans_multi':
@@ -31,6 +34,8 @@ def build_model(config, answer_space):
 def get_model(config, num_labels):
     if config['model']['type_model']=='svm':
         return SVM_Model(config, num_labels)
+    if config['model']['type_model']=='xgboost':
+        return XGBoost_Model(config, num_labels)
     if config['model']['type_model']=='trans_uni':
         return Trans_Model(config, num_labels)
     if config['model']['type_model']=='trans_multi':

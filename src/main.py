@@ -5,6 +5,7 @@ from typing import Text
 import transformers
 
 from task.train import NLI_Task
+from task.train_xgboost import XGBoost_NLI_Task
 from task.inference import Predict
 
 def main(config_path: Text) -> None:
@@ -15,7 +16,13 @@ def main(config_path: Text) -> None:
         config = yaml.safe_load(conf_file)
     
     logging.info("training started...")
-    NLI_Task(config).training()
+    
+    # Choose appropriate training method based on model type
+    if config['model']['type_model'] == 'xgboost':
+        XGBoost_NLI_Task(config).training()
+    else:
+        NLI_Task(config).training()
+        
     logging.info("training complete")
     
     logging.info('now evaluate on test data...')
