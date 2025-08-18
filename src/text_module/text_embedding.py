@@ -60,31 +60,40 @@ class Text_Embedding(nn.Module):
         self.dropout = nn.Dropout(config["text_embedding"]['dropout'])
 
     def forward(self, text1: List[str], text2: List[str] = None):
-        # tokenize
+        # tokenize riêng từng text, max_length = 256
+        enc1 = self.tokenizer(
+            text1,
+            padding=False,
+            truncation=True,
+            max_length=256,
+            return_tensors="pt",
+            return_attention_mask=True
+        )
+        input_ids1 = enc1["input_ids"]
+        attention_mask1 = enc1["attention_mask"]
+
         if text2 is not None:
-            inputs = self.tokenizer(
-                text1, text2,
-                padding=self.padding,
-                max_length=self.max_length,
-                truncation=self.truncation,
+            enc2 = self.tokenizer(
+                text2,
+                padding=False,
+                truncation=True,
+                max_length=256,
                 return_tensors="pt",
-                return_attention_mask=self.return_attention_mask,
+                return_attention_mask=True
             )
+            input_ids2 = enc2["input_ids"]
+            attention_mask2 = enc2["attention_mask"]
+
+            # gộp text1 + text2 theo chiều seq_len
+            input_ids = torch.cat([input_ids1, input_ids2[:, 1:]], dim=1)  # bỏ [CLS] của text2
+            attention_mask = torch.cat([attention_mask1, attention_mask2[:, 1:]], dim=1)
         else:
-            inputs = self.tokenizer(
-                text1,
-                padding=self.padding,
-                max_length=self.max_length,
-                truncation=self.truncation,
-                return_tensors="pt",
-                return_attention_mask=self.return_attention_mask,
-            )
+            input_ids = input_ids1
+            attention_mask = attention_mask1
 
-        # ép inputs về cùng device
-        input_ids = inputs["input_ids"].to(self.device)
-        attention_mask = inputs["attention_mask"].to(self.device) if "attention_mask" in inputs else None
-
-        # ép chắc chắn model trên device
+        # chuyển device
+        input_ids = input_ids.to(self.device)
+        attention_mask = attention_mask.to(self.device)
         self.embedding.to(self.device)
 
         # forward
@@ -98,3 +107,42 @@ class Text_Embedding(nn.Module):
         out = self.proj(features)
         out = self.dropout(self.gelu(out))
         return out, padding_mask
+
+            # tokenize
+            if text2 is not None:
+                inputs = self.tokenizer(
+                    text1, text2,
+                    padding=self.padding,
+                    max_length=self.max_length,
+                    truncation=self.truncation,
+                    return_tensors="pt",
+                    return_attention_mask=self.return_attention_mask,
+                )
+            else:
+                inputs = self.tokenizer(
+                    text1,
+                    padding=self.padding,
+                    max_length=self.max_length,
+                    truncation=self.truncation,
+                    return_tensors="pt",
+                    return_attention_mask=self.return_attention_mask,
+                )
+
+            # ép inputs về cùng device
+            input_ids = inputs["input_ids"].to(self.device)
+            attention_mask = inputs["attention_mask"].to(self.device) if "attention_mask" in inputs else None
+
+            # ép chắc chắn model trên device
+            self.embedding.to(self.device)
+
+            # forward
+            outputs = self.embedding(input_ids=input_ids, attention_mask=attention_mask)
+            features = outputs.last_hidden_state
+
+            # tạo mask padding
+            padding_mask = generate_padding_mask(input_ids, padding_idx=self.tokenizer.pad_token_id)
+
+            # projection
+            out = self.proj(features)
+            out = self.dropout(self.gelu(out))
+            return out, padding_mask
