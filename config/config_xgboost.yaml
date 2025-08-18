@@ -6,13 +6,14 @@ data:
   use_id: False  # If True, use ID information; if False, ignore ID
 
 xgboost:
-  n_estimators: 100        # Number of boosting rounds
+  n_estimators: 100        # Number of boosting rounds (will be multiplied by 3 for early stopping)
   max_depth: 6             # Maximum tree depth
   learning_rate: 0.1       # Step size shrinkage
   subsample: 0.8           # Subsample ratio of training instances
   colsample_bytree: 0.8    # Subsample ratio of columns when constructing each tree
   reg_alpha: 0.0           # L1 regularization term on weights
   reg_lambda: 1.0          # L2 regularization term on weights
+  use_early_stopping: True # Enable early stopping during XGBoost training
 
 tokenizer:
   padding: max_length

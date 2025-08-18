@@ -3,6 +3,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 import xgboost as xgb
+import pickle
+import os
 from text_module.init_text_embedding import build_text_embedding
 
 class XGBoost_Model(nn.Module):
@@ -47,7 +49,7 @@ class XGBoost_Model(nn.Module):
         return feature_attended
 
     def fit_xgboost(self, train_features, train_labels):
-        """Fit XGBoost classifier with extracted features"""
+        """Fit XGBoost classifier with extracted features (without early stopping)"""
         # Convert to numpy if tensor
         if isinstance(train_features, torch.Tensor):
             train_features = train_features.detach().cpu().numpy()
@@ -70,6 +72,64 @@ class XGBoost_Model(nn.Module):
         
         # Fit the classifier
         self.xgb_classifier.fit(train_features, train_labels)
+
+    def fit_xgboost_with_early_stopping(self, train_features, train_labels, valid_features, valid_labels, patience=5):
+        """Fit XGBoost classifier with early stopping"""
+        # Convert to numpy if tensor
+        if isinstance(train_features, torch.Tensor):
+            train_features = train_features.detach().cpu().numpy()
+        if isinstance(train_labels, torch.Tensor):
+            train_labels = train_labels.detach().cpu().numpy()
+        if isinstance(valid_features, torch.Tensor):
+            valid_features = valid_features.detach().cpu().numpy()
+        if isinstance(valid_labels, torch.Tensor):
+            valid_labels = valid_labels.detach().cpu().numpy()
+            
+        # Initialize XGBoost classifier with more estimators for early stopping
+        self.xgb_classifier = xgb.XGBClassifier(
+            n_estimators=self.n_estimators * 3,  # Increase for early stopping
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            subsample=self.subsample,
+            colsample_bytree=self.colsample_bytree,
+            reg_alpha=self.reg_alpha,
+            reg_lambda=self.reg_lambda,
+            random_state=42,
+            n_jobs=-1,
+            eval_metric='mlogloss' if self.num_labels > 2 else 'logloss',
+            early_stopping_rounds=patience
+        )
+        
+        # Fit with early stopping
+        print(f"Training XGBoost with early stopping (patience={patience})...")
+        self.xgb_classifier.fit(
+            train_features, train_labels,
+            eval_set=[(valid_features, valid_labels)],
+            verbose=True
+        )
+        
+        print(f"XGBoost training stopped at {self.xgb_classifier.best_iteration + 1} iterations")
+        print(f"Best validation score: {self.xgb_classifier.best_score:.4f}")
+
+    def save_xgboost_classifier(self, save_path: str):
+        """Save the trained XGBoost classifier"""
+        if self.xgb_classifier is not None:
+            xgb_path = os.path.join(save_path, 'xgboost_classifier.pkl')
+            with open(xgb_path, 'wb') as f:
+                pickle.dump(self.xgb_classifier, f)
+            print(f"XGBoost classifier saved to {xgb_path}")
+
+    def load_xgboost_classifier(self, save_path: str):
+        """Load the trained XGBoost classifier"""
+        xgb_path = os.path.join(save_path, 'xgboost_classifier.pkl')
+        if os.path.exists(xgb_path):
+            with open(xgb_path, 'rb') as f:
+                self.xgb_classifier = pickle.load(f)
+            print(f"XGBoost classifier loaded from {xgb_path}")
+            return True
+        else:
+            print(f"XGBoost classifier not found at {xgb_path}")
+            return False
 
     def forward(self, id1_text: List[str], id2_text: List[str], labels: Optional[torch.LongTensor] = None):
         # Extract features

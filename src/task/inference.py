@@ -13,9 +13,11 @@ from data_utils.load_data import Get_Loader, create_ans_space
 
 class Predict:
     def __init__(self, config: Dict):
+        self.config = config
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.answer_space = create_ans_space(config)
         self.checkpoint_path = os.path.join(config["train"]["output_dir"], "best_model.pth")
+        self.save_path = config["train"]["output_dir"]
         self.model = get_model(config, num_labels=len(self.answer_space))
         self.model.to(self.device)
         self.dataloader = Get_Loader(config)
@@ -28,9 +30,20 @@ class Predict:
         # Load checkpoint (toàn bộ object, weights_only=False)
         logging.info("Loading the best model...")
         checkpoint = torch.load(self.checkpoint_path, weights_only=False)
-        self.model.load_state_dict(checkpoint['model_state_dict'])
+        
+        # Load model state dict
+        state_dict = checkpoint['model_state_dict']
+        self.model.load_state_dict(state_dict, strict=False)
+        logging.info("Model loaded successfully")
+            
         self.model.to(self.device)
         self.model.eval()
+        
+        # For XGBoost model, also load the XGBoost classifier
+        if self.config['model']['type_model'] == 'xgboost':
+            success = self.model.load_xgboost_classifier(self.save_path)
+            if not success:
+                raise RuntimeError("Failed to load XGBoost classifier. Make sure training completed successfully.")
 
         # Load test data
         test_loader = self.dataloader.load_test()

@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 class XGBoost_NLI_Task:
     def __init__(self, config):
+        self.config = config  # Store config for later use
         self.num_epochs = config['train']['num_train_epochs']
         self.patience = config['train']['patience']
         self.learning_rate = config['train']['learning_rate']
@@ -96,26 +97,41 @@ class XGBoost_NLI_Task:
             train_loss /= len(train_loader)
             print(f"NN training epoch {epoch + 1}, loss: {train_loss:.4f}")
         
-        # Phase 2: Extract features and train XGBoost
+        # Phase 2: Extract features and train XGBoost with early stopping
         print("Phase 2: Extracting features and training XGBoost...")
         
         # Extract features from training data
         train_features, train_labels = self.extract_features_and_labels(train_loader)
         valid_features, valid_labels = self.extract_features_and_labels(valid_loader)
         
-        # Train XGBoost classifier
-        if hasattr(self.base_model, 'module'):  # DataParallel case
-            self.base_model.module.fit_xgboost(train_features, train_labels)
-        else:
-            self.base_model.fit_xgboost(train_features, train_labels)
+        # Train XGBoost classifier with or without early stopping
+        use_early_stopping = self.config.get('xgboost', {}).get('use_early_stopping', True)
         
-        # Evaluate XGBoost
+        if use_early_stopping:
+            print("Training XGBoost with early stopping...")
+            if hasattr(self.base_model, 'module'):  # DataParallel case
+                self.base_model.module.fit_xgboost_with_early_stopping(
+                    train_features, train_labels, valid_features, valid_labels, self.patience
+                )
+            else:
+                self.base_model.fit_xgboost_with_early_stopping(
+                    train_features, train_labels, valid_features, valid_labels, self.patience
+                )
+        else:
+            print("Training XGBoost without early stopping...")
+            if hasattr(self.base_model, 'module'):  # DataParallel case
+                self.base_model.module.fit_xgboost(train_features, train_labels)
+            else:
+                self.base_model.fit_xgboost(train_features, train_labels)
+        
+        # Final evaluation on validation set
+        print("Final evaluation on validation set...")
         self.base_model.eval()
         valid_acc = 0.
         valid_f1 = 0.
         
         with torch.no_grad():
-            for it, (sent1, sent2, labels, id) in enumerate(tqdm(valid_loader, desc="Evaluating XGBoost")):
+            for it, (sent1, sent2, labels, id) in enumerate(tqdm(valid_loader, desc="Final Evaluation")):
                 with torch.autocast(device_type='cuda', dtype=torch.float32, enabled=True):
                     logits = self.base_model(sent1, sent2)
                 preds = torch.argmax(logits, dim=-1)
@@ -125,7 +141,7 @@ class XGBoost_NLI_Task:
         valid_acc /= len(valid_loader)
         valid_f1 /= len(valid_loader)
         
-        print(f"XGBoost validation acc: {valid_acc:.4f} valid f1: {valid_f1:.4f}")
+        print(f"Final XGBoost validation acc: {valid_acc:.4f} valid f1: {valid_f1:.4f}")
         
         # Save final model
         if self.best_metric == 'accuracy':
@@ -133,15 +149,26 @@ class XGBoost_NLI_Task:
         elif self.best_metric == 'f1':
             score = valid_f1
         
+        # Save PyTorch model state (exclude dummy_classifier)
+        state_dict = self.base_model.state_dict()
+        filtered_state_dict = {k: v for k, v in state_dict.items() 
+                             if not k.startswith('dummy_classifier')}
+        
         torch.save({
             'epoch': 0,  # XGBoost doesn't have epochs
-            'model_state_dict': self.base_model.state_dict(),
+            'model_state_dict': filtered_state_dict,
             'optimizer_state_dict': self.optimizer.state_dict(),
             'score': score
         }, os.path.join(self.save_path, 'best_model.pth'))
         
+        # Save XGBoost classifier separately
+        if hasattr(self.base_model, 'module'):  # DataParallel case
+            self.base_model.module.save_xgboost_classifier(self.save_path)
+        else:
+            self.base_model.save_xgboost_classifier(self.save_path)
+        
         print(f"Saved XGBoost model with {self.best_metric} of {score:.4f}")
         
         with open('log.txt', 'a') as file:
-            file.write(f"XGBoost training completed\n")
+            file.write(f"XGBoost training completed with early stopping\n")
             file.write(f"Final validation acc: {valid_acc:.4f} valid f1: {valid_f1:.4f}\n")
