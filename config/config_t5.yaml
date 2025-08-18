@@ -9,6 +9,7 @@ tokenizer:
   padding: max_length
   max_length: 256
   truncation: True
+  return_attention_mask: True
 
 text_embedding:
   type: pretrained #có 3 loại, pretrained, tf_idf, count_vec

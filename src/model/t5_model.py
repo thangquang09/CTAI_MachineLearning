@@ -9,21 +9,25 @@ class T5_Model(nn.Module):
     def __init__(self,config: Dict, num_labels: int):
         super(T5_Model, self).__init__()
         self.intermediate_dims = config["model"]["intermediate_dims"]
-        self.text_embbeding = T5_Embedding(config)
+        self.text_embedding = T5_Embedding(config)
         self.num_labels = num_labels
-        self.dropout=config["model"]["dropout"]
+        self.dropout = config["model"]["dropout"]
         self.classifier = nn.Linear(self.intermediate_dims, self.num_labels)
         self.attention_weights = nn.Linear(self.intermediate_dims, 1)
+        self.dropout_layer = nn.Dropout(self.dropout)
         self.uni_encoder = build_uni_modal_encoder(config)
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.NLLLoss()
 
     def forward(self, id1_text: List[str], id2_text: List[str], labels: Optional[torch.LongTensor] = None):
-        embbed, mask = self.text_embbeding(id1_text,id2_text)
-        encoded_feature = self.uni_encoder(embbed, mask)
+        embedded, mask = self.text_embedding(id1_text, id2_text)
+        encoded_feature = self.uni_encoder(embedded, mask)
         feature_attended = self.attention_weights(torch.tanh(encoded_feature))
         
         attention_weights = torch.softmax(feature_attended, dim=1)
         feature_attended = torch.sum(attention_weights * encoded_feature, dim=1)
+        
+        # Apply dropout before classifier
+        feature_attended = self.dropout_layer(feature_attended)
         
         logits = self.classifier(feature_attended)
         logits = F.log_softmax(logits, dim=-1)

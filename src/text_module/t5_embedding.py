@@ -79,13 +79,66 @@ class T5_Embedding(nn.Module):
 
     def forward(self, text1: List[str], text2: Optional[List[str]] = None):
         if text2 is not None:
-            inputs = self.tokenizer(
-                text1, text2,
-                max_length=self.max_length,
+            # Tokenize text1 và text2 riêng biệt với max_length/2 mỗi cái để đảm bảo đóng góp bằng nhau
+            half_length = self.max_length // 2
+            
+            # Tokenize text1 với half_length
+            inputs1 = self.tokenizer(
+                text1,
+                max_length=half_length,
                 truncation=self.truncation,
                 return_tensors="pt",
-                padding=self.padding,
+                padding="max_length",  # Đảm bảo padding đến half_length
             )
+            
+            # Tokenize text2 với half_length
+            inputs2 = self.tokenizer(
+                text2,
+                max_length=half_length,
+                truncation=self.truncation,
+                return_tensors="pt",
+                padding="max_length",  # Đảm bảo padding đến half_length
+            )
+            
+            # T5 không có CLS token, chỉ cần concatenate trực tiếp
+            # Loại bỏ EOS token cuối của text1 và concatenate với text2
+            input_ids1 = inputs1["input_ids"]  # [batch_size, half_length]
+            input_ids2 = inputs2["input_ids"]  # [batch_size, half_length]
+            
+            # Tìm vị trí EOS token trong text1 để loại bỏ
+            eos_token_id = self.tokenizer.eos_token_id
+            
+            # Tạo mask để loại bỏ EOS token cuối của text1
+            batch_size = input_ids1.shape[0]
+            combined_ids = []
+            
+            for i in range(batch_size):
+                # Tìm vị trí EOS token cuối trong text1
+                text1_ids = input_ids1[i]
+                text2_ids = input_ids2[i]
+                
+                # Loại bỏ EOS token cuối của text1 nếu có
+                eos_positions = (text1_ids == eos_token_id).nonzero(as_tuple=True)[0]
+                if len(eos_positions) > 0:
+                    last_eos_pos = eos_positions[-1]
+                    text1_ids = text1_ids[:last_eos_pos]
+                
+                # Concatenate text1 + text2
+                combined = torch.cat([text1_ids, text2_ids])
+                
+                # Truncate nếu vượt quá max_length
+                if len(combined) > self.max_length:
+                    combined = combined[:self.max_length]
+                # Pad nếu thiếu
+                elif len(combined) < self.max_length:
+                    pad_length = self.max_length - len(combined)
+                    pad_tokens = torch.full((pad_length,), self.tokenizer.pad_token_id, dtype=combined.dtype)
+                    combined = torch.cat([combined, pad_tokens])
+                
+                combined_ids.append(combined)
+            
+            input_ids = torch.stack(combined_ids).to(self.device)
+            
         else:
             inputs = self.tokenizer(
                 text=text1,
@@ -94,8 +147,7 @@ class T5_Embedding(nn.Module):
                 return_tensors="pt",
                 padding=self.padding,
             )
-
-        input_ids = inputs["input_ids"].to(self.device)
+            input_ids = inputs["input_ids"].to(self.device)
 
         # Padding mask
         padding_mask = generate_padding_mask(input_ids, padding_idx=self.tokenizer.pad_token_id)
