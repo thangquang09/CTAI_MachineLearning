@@ -63,7 +63,7 @@ class Text_Embedding(nn.Module):
         # tokenize riêng từng text, max_length = 256
         enc1 = self.tokenizer(
             text1,
-            padding=False,
+            padding=True,
             truncation=True,
             max_length=256,
             return_tensors="pt",
@@ -75,7 +75,7 @@ class Text_Embedding(nn.Module):
         if text2 is not None:
             enc2 = self.tokenizer(
                 text2,
-                padding=False,
+                padding=True,
                 truncation=True,
                 max_length=256,
                 return_tensors="pt",
