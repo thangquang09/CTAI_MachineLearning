@@ -26,8 +26,16 @@ class RBFSVM(nn.Module):
 
     def forward(self, x):
         x = self.bn(x)  # Áp dụng BatchNorm trước khi tính toán kernel
-        dists = torch.cdist(x, self.weights, p=2)
-        kernel_matrix = torch.exp(-self.gamma * dists ** 2)
+        # RBF kernel: K(x, w) = exp(-gamma * ||x - w||^2)
+        # Expand dimensions for broadcasting: x [batch, 1, dim], weights [1, classes, dim]
+        x_expanded = x.unsqueeze(1)  # [batch, 1, input_size]
+        w_expanded = self.weights.unsqueeze(0)  # [1, num_classes, input_size]
+        
+        # Compute squared Euclidean distances
+        dists_squared = torch.sum((x_expanded - w_expanded) ** 2, dim=2)  # [batch, num_classes]
+        
+        # Apply RBF kernel
+        kernel_matrix = torch.exp(-self.gamma * dists_squared)
         outputs = kernel_matrix + self.bias
         return outputs
 
@@ -93,7 +101,7 @@ def get_kernel(kernel_type,input_size ,num_classes, gamma,r, degree):
     elif kernel_type == 'poly':
         return PolySVM(input_size, num_classes, gamma, r, degree)
     elif kernel_type == 'sigmoid':
-        return PolySVM(input_size, num_classes, gamma, r)
+        return SigmoidSVM(input_size, num_classes, gamma, r)
     elif kernel_type == 'custom':
         return CustomSVM(input_size, num_classes, gamma, r, degree)
     else:
