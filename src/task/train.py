@@ -16,6 +16,7 @@ class NLI_Task:
         self.save_path = config['train']['output_dir']
         self.best_metric= config['train']['metric_for_best_model']
         self.weight_decay=config['train']['weight_decay']
+        self.gradient_accumulation_steps = config['train'].get('gradient_accumulation_steps', 1)
         self.answer_space=create_ans_space(config)
         self.dataloader = Get_Loader(config)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -61,11 +62,18 @@ class NLI_Task:
             for it, (sent1, sent2, labels, id) in enumerate(tqdm(train)):
                 with torch.autocast(device_type='cuda', dtype=torch.float32, enabled=True):
                     logits, loss = self.base_model(sent1, sent2, labels.to(self.device))
+                    # Scale loss by accumulation steps
+                    loss = loss / self.gradient_accumulation_steps
+                
                 self.scaler.scale(loss).backward()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-                self.optimizer.zero_grad()
-                train_loss += loss
+                
+                # Only step optimizer every gradient_accumulation_steps
+                if (it + 1) % self.gradient_accumulation_steps == 0:
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+                
+                train_loss += loss * self.gradient_accumulation_steps  # Unscale for logging
             self.scheduler.step()
             train_loss /=len(train)
 

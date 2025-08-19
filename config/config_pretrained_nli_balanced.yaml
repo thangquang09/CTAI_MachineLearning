@@ -1,0 +1,46 @@
+data:
+  dataset_folder: data
+  train_dataset: train.csv
+  val_dataset: dev.csv
+  test_dataset: test.csv
+  use_id: False
+
+tokenizer:
+  padding: max_length
+  max_length: 768      # Good balance: longer than 512 but manageable
+  truncation: True
+  return_attention_mask: True
+
+text_embedding:
+  type: pretrained
+  add_new_token: False
+  text_encoder: MoritzLaurer/mDeBERTa-v3-large-mnli-fever-anli-ling-wanli  # Large but not XL
+  freeze: False
+  use_lora: True       # Enable LoRA for efficiency
+  lora_target_modules: ["query_proj", "key_proj", "value_proj"]
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  d_features: 1024     # DeBERTa-large hidden size
+  d_model: 1024
+  dropout: 0.1
+
+model:
+  type_model: pretrained_nli
+  dropout: 0.1
+
+train:
+  output_dir: checkpoint
+  seed: 12345
+  num_train_epochs: 8   # Moderate epochs
+  patience: 3
+  learning_rate: 8.0e-6 # Balanced LR
+  weight_decay: 0.01
+  metric_for_best_model: f1
+  per_device_train_batch_size: 4   # Balanced batch size
+  per_device_valid_batch_size: 4
+  gradient_accumulation_steps: 4    # Effective batch size = 16
+
+inference:
+  test_dataset: data/test.csv
+  batch_size: 8
