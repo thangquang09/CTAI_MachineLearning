@@ -73,7 +73,7 @@ class SigmoidSVM(nn.Module):
         self.bn = nn.BatchNorm1d(input_size)  # Thêm BatchNorm1d
 
     def forward(self, x):
-        '       # Apply BatchNorm only if batch_size > 1 and in training mode
+        # Apply BatchNorm only if batch_size > 1 and in training mode
         if x.size(0) > 1 and self.training:
             x = self.bn(x)
             
