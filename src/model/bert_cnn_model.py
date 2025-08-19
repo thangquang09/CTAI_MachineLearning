@@ -14,23 +14,28 @@ class Text_CNN_Model(nn.Module):
         self.num_labels = num_labels
         self.intermediate_dims = config["model"]["intermediate_dims"]
         self.hidden_dim = config["model"]["hidden_dim"]
-        self.dropout=config["model"]["dropout"]
+        self.dropout = config["model"]["dropout"]
         self.d_text = config["text_embedding"]['d_features']
-        self.text_embbeding = build_text_embedding(config)
+        self.text_embedding = build_text_embedding(config)
         self.encoder = build_uni_modal_encoder(config)
-        self.classifier = Text_CNN(self.intermediate_dims,self.hidden_dim ,self.num_labels)
+        self.classifier = Text_CNN(self.intermediate_dims, self.hidden_dim, self.num_labels)
+        self.dropout_layer = nn.Dropout(self.dropout)
         self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, id1_text: List[str], id2_text: List[str], labels: Optional[torch.LongTensor] = None):
 
-        embbed, mask = self.text_embbeding(id1_text, id2_text)
-        encoded_feature = self.encoder(embbed, mask)
+        embedded, mask = self.text_embedding(id1_text, id2_text)
+        encoded_feature = self.encoder(embedded, mask)
+        
+        # Apply dropout before CNN classifier
+        encoded_feature = self.dropout_layer(encoded_feature)
+        
+        # CNN classifier returns raw logits
         logits = self.classifier(encoded_feature)
-        logits = F.softmax(logits, dim=-1)
 
         if labels is not None:
             loss = self.criterion(logits, labels)
-            return logits,loss
+            return logits, loss
         else:
             return logits
 

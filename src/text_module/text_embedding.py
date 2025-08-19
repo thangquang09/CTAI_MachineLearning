@@ -60,36 +60,67 @@ class Text_Embedding(nn.Module):
         self.dropout = nn.Dropout(config["text_embedding"]['dropout'])
 
     def forward(self, text1: List[str], text2: List[str] = None):
-        # tokenize riêng từng text, max_length = 256
-        enc1 = self.tokenizer(
-            text1,
-            padding=True,
-            truncation=True,
-            max_length=256,
-            return_tensors="pt",
-            return_attention_mask=True
-        )
-        input_ids1 = enc1["input_ids"]
-        attention_mask1 = enc1["attention_mask"]
-
         if text2 is not None:
+            # Đảm bảo text1 và text2 có đóng góp HOÀN TOÀN bằng nhau
+            # Mỗi text sẽ có đúng (max_length-1)/2 tokens (trừ 1 cho [CLS] chung)
+            half_length = (self.max_length - 1) // 2  # 127 tokens cho mỗi text (với max_length=256)
+            
+            # Tokenize text1 với đúng half_length
+            enc1 = self.tokenizer(
+                text1,
+                padding="max_length",
+                truncation=self.truncation,
+                max_length=half_length,
+                return_tensors="pt",
+                return_attention_mask=self.return_attention_mask
+            )
+            
+            # Tokenize text2 với đúng half_length  
             enc2 = self.tokenizer(
                 text2,
-                padding=True,
-                truncation=True,
-                max_length=256,
+                padding="max_length", 
+                truncation=self.truncation,
+                max_length=half_length,
                 return_tensors="pt",
-                return_attention_mask=True
+                return_attention_mask=self.return_attention_mask
             )
-            input_ids2 = enc2["input_ids"]
-            attention_mask2 = enc2["attention_mask"]
+            
+            input_ids1 = enc1["input_ids"]    # [batch, 127]
+            input_ids2 = enc2["input_ids"]    # [batch, 127] 
+            attention_mask1 = enc1["attention_mask"]  # [batch, 127]
+            attention_mask2 = enc2["attention_mask"]  # [batch, 127]
 
-            # gộp text1 + text2 theo chiều seq_len
-            input_ids = torch.cat([input_ids1, input_ids2[:, 1:]], dim=1)  # bỏ [CLS] của text2
-            attention_mask = torch.cat([attention_mask1, attention_mask2[:, 1:]], dim=1)
+            # Kết hợp: [CLS] + text1 + [SEP] + text2 + [SEP] 
+            # Loại bỏ [CLS] của text2, giữ lại [CLS] của text1
+            input_ids = torch.cat([input_ids1, input_ids2[:, 1:]], dim=1)  # [batch, 127 + 126 = 253]
+            attention_mask = torch.cat([attention_mask1, attention_mask2[:, 1:]], dim=1)  # [batch, 253]
+            
+            # Pad thêm để đủ max_length nếu cần
+            current_length = input_ids.shape[1]
+            if current_length < self.max_length:
+                pad_length = self.max_length - current_length
+                pad_token_id = self.tokenizer.pad_token_id
+                
+                # Pad input_ids
+                pad_ids = torch.full((input_ids.shape[0], pad_length), pad_token_id, dtype=input_ids.dtype)
+                input_ids = torch.cat([input_ids, pad_ids], dim=1)
+                
+                # Pad attention_mask với 0
+                pad_mask = torch.zeros((attention_mask.shape[0], pad_length), dtype=attention_mask.dtype)
+                attention_mask = torch.cat([attention_mask, pad_mask], dim=1)
+                
         else:
-            input_ids = input_ids1
-            attention_mask = attention_mask1
+            # Single text case
+            enc1 = self.tokenizer(
+                text1,
+                padding=self.padding,
+                truncation=self.truncation,
+                max_length=self.max_length,
+                return_tensors="pt",
+                return_attention_mask=self.return_attention_mask
+            )
+            input_ids = enc1["input_ids"]
+            attention_mask = enc1["attention_mask"]
 
         # chuyển device
         input_ids = input_ids.to(self.device)
