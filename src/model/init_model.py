@@ -3,6 +3,8 @@ from model.xgboost_model import createXGBoost_Model,XGBoost_Model
 from model.trans_uni_modal_model import createTrans_Model,Trans_Model
 from model.transformer_svm_model import createTrans_SVM_Model,Trans_SVM_Model
 from model.bert_cnn_model import createText_CNN_Model,Text_CNN_Model
+from model.bert_cross_attention_model import createBERT_CrossAttention_Model,BERT_CrossAttention_Model
+from model.sentence_bert_model import createSentenceBERT_Model,SentenceBERT_Model
 from model.pat_model import createParallelAttentionTransformer,ParallelAttentionTransformer
 from model.trans_multi_modal_model import createTrans_Model_New,Trans_Model_New
 from model.pair_sentence import createPair_Sentence_Model,Pair_Sentence_Model
@@ -22,6 +24,10 @@ def build_model(config, answer_space):
         return createTrans_SVM_Model(config, answer_space)
     if config['model']['type_model']=='cnn':
         return createText_CNN_Model(config, answer_space)
+    if config['model']['type_model']=='cross_attention':
+        return createBERT_CrossAttention_Model(config, answer_space)
+    if config['model']['type_model']=='sbert':
+        return createSentenceBERT_Model(config, answer_space)
     if config['model']['type_model']=='pat':
         return createParallelAttentionTransformer(config,answer_space)
     if config['model']['type_model']=='pair_sentence':
@@ -44,6 +50,10 @@ def get_model(config, num_labels):
         return Trans_SVM_Model(config, num_labels)
     if config['model']['type_model']=='cnn':
         return Text_CNN_Model(config, num_labels)
+    if config['model']['type_model']=='cross_attention':
+        return BERT_CrossAttention_Model(config, num_labels)
+    if config['model']['type_model']=='sbert':
+        return SentenceBERT_Model(config, num_labels)
     if config['model']['type_model']=='pat':
         return ParallelAttentionTransformer(config, num_labels)
     if config['model']['type_model']=='pair_sentence':
