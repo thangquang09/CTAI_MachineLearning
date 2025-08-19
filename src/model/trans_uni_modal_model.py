@@ -13,7 +13,7 @@ class Trans_Model(nn.Module):
         self.num_labels = num_labels
         self.intermediate_dims = config["model"]["intermediate_dims"]
         self.dropout=config["model"]["dropout"]
-        self.text_embbeding = build_text_embedding(config)          
+        self.text_embedding = build_text_embedding(config)          
         self.encoder = build_uni_modal_encoder(config)
         self.classifier = nn.Linear(self.intermediate_dims, self.num_labels)
         self.attention_weights = nn.Linear(self.intermediate_dims, 1)
@@ -21,8 +21,8 @@ class Trans_Model(nn.Module):
 
     def forward(self, id1_text: List[str], id2_text: List[str], labels: Optional[torch.LongTensor] = None):
 
-        embbed, mask = self.text_embbeding(id1_text, id2_text)
-        encoded_feature = self.encoder(embbed, mask)
+        embedded, mask = self.text_embedding(id1_text, id2_text)
+        encoded_feature = self.encoder(embedded, mask)
         feature_attended = self.attention_weights(torch.tanh(encoded_feature))
         
         attention_weights = torch.softmax(feature_attended, dim=1)

@@ -1,0 +1,46 @@
+data:
+  dataset_folder: data
+  train_dataset: train.csv
+  val_dataset: dev.csv
+  test_dataset: test.csv
+  use_id: False
+
+tokenizer:
+  padding: max_length
+  max_length: 512
+  truncation: True
+  return_attention_mask: True
+
+text_embedding:
+  type: pretrained
+  add_new_token: False
+  text_encoder: roberta-base  # RoBERTa base - excellent for NLI
+  freeze: False
+  use_lora: True
+  lora_target_modules: ["query", "key", "value"]  # RoBERTa modules
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.1
+  d_features: 768
+  d_model: 768
+  dropout: 0.1
+
+model:
+  type_model: pretrained_nli
+  dropout: 0.1
+
+train:
+  output_dir: checkpoint
+  seed: 42
+  num_train_epochs: 15
+  patience: 5
+  learning_rate: 2.0e-5
+  weight_decay: 0.01
+  metric_for_best_model: f1
+  per_device_train_batch_size: 16
+  per_device_valid_batch_size: 16
+  gradient_accumulation_steps: 2
+
+inference:
+  test_dataset: data/test.csv
+  batch_size: 32

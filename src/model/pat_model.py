@@ -24,7 +24,7 @@ class ParallelAttentionTransformer(nn.Module):
     def __init__(self,config: Dict, num_labels: int) -> None:
         super().__init__()
         self.num_labels = num_labels
-        self.text_embbeding = build_text_embedding(config)
+        self.text_embedding = build_text_embedding(config)
         self.encoder = build_multi_modal_encoder(config)
 
         self.text_attr_reduce = MLP(config)
