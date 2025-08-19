@@ -20,7 +20,7 @@ tokenizer:
 text_embedding:
   type: pretrained  # Options: pretrained, tf_idf, count_vec
   add_new_token: False
-  text_encoder: MoritzLaurer/ModernBERT-base-zeroshot-v2.0  # Better base model for NLI
+  text_encoder: MoritzLaurer/deberta-v3-base-mnli-fever-anli-ling-wanli-binary  # Better base model for NLI
   freeze: False
   use_lora: False   # Enable LoRA for better fine-tuning
   # LoRA configs (only used when use_lora: True)
