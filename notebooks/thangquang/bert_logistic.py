@@ -256,8 +256,6 @@ def compute_rule_based_features(text: str) -> dict:
             ]
         )
         / max(word_count, 1),
-        "china_count": text.lower().count("china"),
-        "dinosaur_count": text.lower().count("dinosaur"),
     }
 
 
