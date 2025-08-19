@@ -25,7 +25,10 @@ class RBFSVM(nn.Module):
         self.bn = nn.BatchNorm1d(input_size)  # Thêm BatchNorm1d
 
     def forward(self, x):
-        x = self.bn(x)  # Áp dụng BatchNorm trước khi tính toán kernel
+        # Apply BatchNorm only if batch_size > 1 and in training mode
+        if x.size(0) > 1 and self.training:
+            x = self.bn(x)
+        
         # RBF kernel: K(x, w) = exp(-gamma * ||x - w||^2)
         # Expand dimensions for broadcasting: x [batch, 1, dim], weights [1, classes, dim]
         x_expanded = x.unsqueeze(1)  # [batch, 1, input_size]
@@ -70,7 +73,10 @@ class SigmoidSVM(nn.Module):
         self.bn = nn.BatchNorm1d(input_size)  # Thêm BatchNorm1d
 
     def forward(self, x):
-        x = self.bn(x)  # Áp dụng BatchNorm trước khi tính toán kernel
+        '       # Apply BatchNorm only if batch_size > 1 and in training mode
+        if x.size(0) > 1 and self.training:
+            x = self.bn(x)
+            
         kernel_matrix = torch.tanh(self.gamma * torch.mm(x, self.weights.t())+ self.r)
         outputs = kernel_matrix  + self.bias
         return outputs

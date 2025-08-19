@@ -54,8 +54,8 @@ class Get_Loader:
         print("Reading validation data...")
         val_set = CustomDataset(val_df)
     
-        train_loader = DataLoader(train_set, batch_size=self.train_batch, num_workers=2,shuffle=True)
-        val_loader = DataLoader(val_set, batch_size=self.val_batch, num_workers=2,shuffle=True)
+        train_loader = DataLoader(train_set, batch_size=self.train_batch, num_workers=2, shuffle=True, drop_last=True)
+        val_loader = DataLoader(val_set, batch_size=self.val_batch, num_workers=2, shuffle=True, drop_last=True)
         return train_loader, val_loader
     
     def load_test(self):

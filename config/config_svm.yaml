@@ -47,7 +47,8 @@ train:
   metric_for_best_model: accuracy
   per_device_train_batch_size: 8  # Smaller batch for stable gradient
   per_device_valid_batch_size: 16
-  gradient_accumulation_steps: 2   # Effective batch = 16*2 = 32
+  gradient_accumulation_steps: 2   # Effective batch = 8*2 = 16
+  dataloader_drop_last: True      # Drop last incomplete batch
 
 inference:
   test_dataset: data/test.csv  # Should match data.test_dataset path
