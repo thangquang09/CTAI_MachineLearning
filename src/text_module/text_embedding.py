@@ -64,7 +64,7 @@ class Text_Embedding(nn.Module):
         if text2 is not None:
             # Đảm bảo text1 và text2 có đóng góp HOÀN TOÀN bằng nhau
             # Mỗi text sẽ có đúng (max_length-1)/2 tokens (trừ 1 cho [CLS] chung)
-            half_length = (self.max_length - 1) // 2  # 127 tokens cho mỗi text (với max_length=256)
+            half_length = (self.max_length - 1) // 2  # Flexible với bất kỳ max_length nào
             
             # Tokenize text1 với đúng half_length
             enc1 = self.tokenizer(

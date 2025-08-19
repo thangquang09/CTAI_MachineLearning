@@ -89,9 +89,13 @@ class BERT_CrossAttention_Model(nn.Module):
     def separate_premise_hypothesis(self, embedded, attention_mask):
         """Separate premise and hypothesis from concatenated sequence"""
         batch_size, seq_len, hidden_dim = embedded.shape
-        half_len = seq_len // 2
         
-        # Split roughly in half (adjust for special tokens)
+        # Calculate exact split based on how text_embedding concatenates
+        # text1: (max_length-1)//2 tokens, text2: (max_length-1)//2 - 1 tokens (no CLS)
+        # Plus padding to reach max_length
+        half_len = (self.max_length - 1) // 2  # 127 for max_length=256
+        
+        # Split: premise gets first half_len, hypothesis gets the rest
         premise = embedded[:, :half_len, :]
         hypothesis = embedded[:, half_len:, :]
         
