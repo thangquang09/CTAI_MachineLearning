@@ -25,7 +25,7 @@ class NLI_Task:
         self.base_model=self.base_model.to(self.device)
         self.compute_score = ScoreCalculator()
         self.optimizer = optim.Adam(self.base_model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-        self.scaler = torch.cuda.amp.GradScaler()
+        self.scaler = torch.amp.GradScaler('cuda')
         lambda1 = lambda epoch: 0.95 ** epoch
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda1)
     

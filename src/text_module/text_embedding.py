@@ -49,6 +49,7 @@ class Text_Embedding(nn.Module):
                 r=config['text_embedding']['lora_r'],
                 lora_alpha=config['text_embedding']['lora_alpha'],
                 lora_dropout=config['text_embedding']['lora_dropout'],
+                target_modules=config['text_embedding']['lora_target_modules'],
                 bias="none",
                 task_type=TaskType.SEQ_CLS,
             )
