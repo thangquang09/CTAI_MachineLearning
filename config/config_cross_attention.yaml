@@ -14,7 +14,7 @@ tokenizer:
 text_embedding:
   type: pretrained
   add_new_token: False
-  text_encoder: vinai/phobert-base  # Vietnamese BERT
+  text_encoder: MoritzLaurer/mDeBERTa-v3-base-mnli-xnli  # Vietnamese BERT
   freeze: False
   use_lora: False
   lora_target_modules: ["query", "value", "key"]
