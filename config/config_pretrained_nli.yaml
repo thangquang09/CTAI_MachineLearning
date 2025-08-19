@@ -14,7 +14,7 @@ tokenizer:
 text_embedding:
   type: pretrained
   add_new_token: False
-  text_encoder: MoritzLaurer/mDeBERTa-v3-large-mnli-fever-anli-ling-wanli  # Large model!
+  text_encoder: microsoft/deberta-v3-large  # Large model!
   freeze: False
   use_lora: True       # Enable LoRA để handle large model efficiently
   lora_target_modules: ["query_proj", "key_proj", "value_proj"]  # DeBERTa modules
@@ -32,7 +32,7 @@ model:
 train:
   output_dir: checkpoint
   seed: 12345
-  num_train_epochs: 5   # Ít epochs hơn vì large model
+  num_train_epochs: 10   # Ít epochs hơn vì large model
   patience: 2           # Patience thấp hơn
   learning_rate: 5.0e-6 # LR thấp hơn cho large model
   weight_decay: 0.01
