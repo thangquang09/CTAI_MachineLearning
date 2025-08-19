@@ -9,7 +9,7 @@ svm:
   gamma: 0.01  # Optimized for rbf, poly, sigmoid kernels (lower = smoother)
   degree: 3    # Optimized for polynomial kernel 
   r: 0.5       # Optimized for poly, sigmoid kernels
-  kernel_type: rbf  # RBF usually performs better than linear for NLI
+  kernel_type: sigmoid   # RBF usually performs better than linear for NLI
 
 tokenizer:
   padding: max_length
@@ -42,8 +42,8 @@ train:
   seed: 12345
   num_train_epochs: 50    # Reduced epochs for SVM
   patience: 8            # More patience for SVM convergence
-  learning_rate: 3.0e-4  # Higher LR for SVM kernel learning
-  weight_decay: 1.0e-4   # Small weight decay for regularization
+  learning_rate: 3.0e-5
+  weight_decay: 1.0e-4  # Small weight decay for regularization
   metric_for_best_model: accuracy
   per_device_train_batch_size: 8  # Smaller batch for stable gradient
   per_device_valid_batch_size: 16
