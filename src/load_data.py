@@ -482,9 +482,9 @@ def main():
             test_glove_features.to_csv("./data/test_glove_features.csv", index=False)
             
 
-    df_train.drop(columns=['file_1', 'file_2'], inplace=True, errors='ignore')
-    df_val.drop(columns=['file_1', 'file_2'], inplace=True, errors='ignore')
-    df_test.drop(columns=['file_1', 'file_2'], inplace=True, errors='ignore')
+    # df_train.drop(columns=['file_1', 'file_2'], inplace=True, errors='ignore')
+    # df_val.drop(columns=['file_1', 'file_2'], inplace=True, errors='ignore')
+    # df_test.drop(columns=['file_1', 'file_2'], inplace=True, errors='ignore')
     
     print(df_train.head())
     print("features:", df_train.columns)
