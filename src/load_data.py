@@ -121,15 +121,14 @@ def compute_rule_based_features(text: str) -> dict:
 
     # === NEW FEATURES FOR FAKE DETECTION ===
 
-    # 2. Multi-script detection (Garbage text pattern)
+    # 2. Multi-script detection (Binary classification)
     cyrillic_count = len(re.findall(r"[\u0400-\u04FF]", text))  # Russian
     arabic_count = len(re.findall(r"[\u0600-\u06FF]", text))  # Arabic
     chinese_count = len(re.findall(r"[\u4e00-\u9fff]", text))  # Chinese
 
-    # 3. Script diversity metrics
-    script_diversity = sum(
-        1 for count in [cyrillic_count, arabic_count, chinese_count] if count > 0
-    )
+    # 3. Script presence indicators (Binary features)
+    has_non_english_script = 1 if (cyrillic_count > 0 or arabic_count > 0 or chinese_count > 0) else 0
+    has_mixed_scripts = 1 if sum(1 for count in [cyrillic_count, arabic_count, chinese_count] if count > 0) > 1 else 0
     
     # 4. Inconsistency detection features
     # 4.1. Sudden language change (character encoding issues)
@@ -150,7 +149,10 @@ def compute_rule_based_features(text: str) -> dict:
         entropy = -sum((freq/total_words) * math.log2(freq/total_words) 
                         for freq in word_freq.values())
         perplexity_score = 2 ** entropy
-    ttr_ratio = len(words) / max(word_count, 1)    
+    
+    # FIX: TTR (Type-Token Ratio) = Số từ duy nhất / Tổng số từ
+    unique_words = len(set(words))  # Số từ duy nhất
+    ttr_ratio = unique_words / max(word_count, 1)    
         
     return {
         # Basic text metrics
@@ -160,17 +162,14 @@ def compute_rule_based_features(text: str) -> dict:
         "avg_sentence_length": avg_sentence_length,
         # Language detection
         "english_word_ratio": english_word_ratio,
-        # Script variety features
-        "cyrillic_count": cyrillic_count,
-        "arabic_count": arabic_count,
-        "chinese_count": chinese_count,
-        "script_diversity": script_diversity,
+        # Script presence features (Binary)
+        "has_non_english_script": has_non_english_script,
+        "has_mixed_scripts": has_mixed_scripts,
         # Inconsistency features
         "unicode_control_chars": unicode_control_chars,
         # "suspicious_count": suspicious_count,
         # Additional text characteristics
-        "number_count": len(re.findall(r"\d+", text)),
-        "uppercase_word_count": len(re.findall(r"\b[A-Z][A-Z]+\b", text)),
+        "num_count": text.count("num"),
         # Content repetition pattern
         "repetition_score": sum(
             [
