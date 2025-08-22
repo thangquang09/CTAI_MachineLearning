@@ -467,8 +467,9 @@ class EmbeddingExtractor:
         self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(self.device)
 
     def get_embedding(self, text : str ) -> np.ndarray:
+        cleaned_text = clean_text(text)
         inputs = self.tokenizer(
-            text,
+            cleaned_text,
             return_tensors="pt",
             padding=True,
             truncation=True,
