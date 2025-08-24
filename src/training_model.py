@@ -64,7 +64,7 @@ def train(
     optimizer,
     scheduler,
     device,
-    early_stopping_patience=5,
+    early_stopping_patience=10,
     use_early_stopping=True,
 ):
     model.to(device)
