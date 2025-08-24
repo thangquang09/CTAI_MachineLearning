@@ -2,14 +2,14 @@ import re
 import string
 
 # count: words and vocabulary
-from collections import Counter, OrderedDict
+from collections import Counter
 from itertools import chain
 
 import pandas as pd
 import torch
 from datasets import load_dataset
 from nltk.tokenize import word_tokenize
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 import nltk
 
 MAX_LEN = 600
@@ -57,6 +57,45 @@ class TextComparisonDataset(Dataset):
         label = torch.tensor(label - 1, dtype=torch.float)
 
         return seq1, seq2, label
+
+
+class TextClassificationDataset(Dataset):
+    def __init__(self, dataframe, vocab):
+        self.texts = []
+        self.labels = []
+        self.vocab = vocab
+        
+        # Chuyển đổi format: mỗi cặp (file_1, file_2) thành 2 samples riêng biệt
+        for idx in range(len(dataframe)):
+            original_label = dataframe.iloc[idx]["label"]
+            file_1 = dataframe.iloc[idx]["file_1"]
+            file_2 = dataframe.iloc[idx]["file_2"]
+            
+            # Thêm file_1
+            self.texts.append(file_1)
+            if original_label == 1:  # file_1 là Real
+                self.labels.append(1)
+            else:  # file_1 là Fake
+                self.labels.append(0)
+            
+            # Thêm file_2
+            self.texts.append(file_2)
+            if original_label == 1:  # file_2 là Fake
+                self.labels.append(0)
+            else:  # file_2 là Real
+                self.labels.append(1)
+
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+        text = self.texts[idx]
+        label = self.labels[idx]
+
+        seq = text_to_sequence(text, self.vocab)
+        label = torch.tensor(label, dtype=torch.float)
+
+        return seq, label
 
 
 def preprocessing(text: str) -> str:
@@ -112,23 +151,7 @@ def text_to_sequence(text, vocab):
     return torch.tensor(seq, dtype=torch.long)
 
 
-def get_dataset(case: int = 1):
-    dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
-
-    nltk.download('punkt')
-    nltk.download('punkt_tab')
-    train_df = dataset[f"case{case}_train"].to_pandas()
-    val_df = dataset[f"case{case}_validation"].to_pandas()
-
-    train_df.dropna(inplace=True)
-    val_df.dropna(inplace=True)
-
-    train_df["file_1"] = train_df["file_1"].apply(preprocessing)
-    train_df["file_2"] = train_df["file_2"].apply(preprocessing)
-
-    val_df["file_1"] = val_df["file_1"].apply(preprocessing)
-    val_df["file_2"] = val_df["file_2"].apply(preprocessing)
-
+def build_vocab(train_df, vocab_size=10000, min_freq=2):
     # 1. Lấy tất cả các token và đếm tần suất
     all_tokens = chain.from_iterable(
         yield_token(pd.concat([train_df["file_1"], train_df["file_2"]]))
@@ -139,8 +162,6 @@ def get_dataset(case: int = 1):
     sorted_by_freq = sorted(token_counts.items(), key=lambda x: x[1], reverse=True)
 
     # 3. Lọc theo min_freq và giới hạn kích thước từ vựng
-    min_freq = 1
-    vocab_size = 9125
     specials = ["<pad>", "<s>", "<unk>"]
 
     # Lấy các từ đủ điều kiện
@@ -154,11 +175,62 @@ def get_dataset(case: int = 1):
     vocabulary.set_default_index(vocabulary["<unk>"])
 
     print(f"Kích thước từ vựng: {len(vocabulary)}")
-    print(f"Index của '<pad>': {vocabulary['<pad>']}")
-    print(f"Index của một từ ngẫu nhiên 'hello': {vocabulary['hello']}")
-    print(f"Index của một từ không có trong từ điển: {vocabulary['từ_không_tồn_tại']}")
+
+    return vocabulary
+
+
+def get_dataset(case: int = 1):
+    dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
+
+    nltk.download("punkt")
+    nltk.download("punkt_tab")
+    train_df = dataset[f"case{case}_train"].to_pandas()
+    val_df = dataset[f"case{case}_validation"].to_pandas()
+
+    train_df.dropna(inplace=True)
+    val_df.dropna(inplace=True)
+
+    train_df["file_1"] = train_df["file_1"].apply(preprocessing)
+    train_df["file_2"] = train_df["file_2"].apply(preprocessing)
+
+    val_df["file_1"] = val_df["file_1"].apply(preprocessing)
+    val_df["file_2"] = val_df["file_2"].apply(preprocessing)
+
+    vocabulary = build_vocab(train_df)
 
     train_dataset = TextComparisonDataset(train_df, vocabulary)
     val_dataset = TextComparisonDataset(val_df, vocabulary)
 
     return train_dataset, val_dataset, vocabulary
+
+
+def get_dataset_1(case: int = 1):
+    """Thay vì TextComparisonDataset, sử dụng TextClassificationDataset, nghĩa là mỗi đoạn văn sẽ được phân loại Real or Fake"""
+    dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
+
+    nltk.download("punkt")
+    nltk.download("punkt_tab")
+    train_df = dataset[f"case{case}_train"].to_pandas()
+    val_df = dataset[f"case{case}_validation"].to_pandas()
+
+    train_df.dropna(inplace=True)
+    val_df.dropna(inplace=True)
+
+    train_df["file_1"] = train_df["file_1"].apply(preprocessing)
+    train_df["file_2"] = train_df["file_2"].apply(preprocessing)
+
+    val_df["file_1"] = val_df["file_1"].apply(preprocessing)
+    val_df["file_2"] = val_df["file_2"].apply(preprocessing)
+
+    vocabulary = build_vocab(train_df)
+    
+    # Tạo dataset cho text classification
+    train_dataset = TextClassificationDataset(train_df, vocabulary)
+    val_dataset = TextClassificationDataset(val_df, vocabulary)
+    
+    print(f"Train dataset size: {len(train_dataset)} (từ {len(train_df)} cặp)")
+    print(f"Val dataset size: {len(val_dataset)} (từ {len(val_df)} cặp)")
+    
+    return train_dataset, val_dataset, vocabulary
+    
+    
