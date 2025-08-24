@@ -8,7 +8,7 @@ class SiameseLSTM(nn.Module):
 
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
         self.lstm = nn.LSTM(
-            embedding_dim, hidden_dim, batch_first=True, bidirectional=True
+            embedding_dim, hidden_dim, batch_first=True, bidirectional=True, num_layers=3
         )
 
         self.classifier = nn.Sequential(
@@ -38,8 +38,8 @@ class PairClassifier(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1):
         super(PairClassifier, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
-        self.lstm1 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, bidirectional=True, dropout=0.3)
-        self.lstm2 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, bidirectional=True, dropout=0.3)
+        self.lstm1 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, bidirectional=True, dropout=0.3, num_layers=3)
+        self.lstm2 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True, bidirectional=True, dropout=0.3, num_layers=3)
         
         # Với bidirectional, hidden_dim sẽ gấp đôi
         actual_hidden_dim = hidden_dim * 2
