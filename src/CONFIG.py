@@ -7,4 +7,6 @@ OUTPUT_DIM = 1 # Output 1 giá trị logit cho binary classification
 NUM_EPOCHS = 30
 LEARNING_RATE = 1e-3
 SEQ_LENGTH = 600
+EARLY_STOPPING = False
+
 

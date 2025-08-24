@@ -65,6 +65,7 @@ def train(
     scheduler,
     device,
     early_stopping_patience=5,
+    use_early_stopping=True,
 ):
     model.to(device)
     train_losses = []
@@ -133,7 +134,7 @@ def train(
         test_losses.append(test_loss)
         test_accuracies.append(test_accuracy)
 
-        if epochs_no_improve >= early_stopping_patience:
+        if use_early_stopping and epochs_no_improve >= early_stopping_patience:
             print(
                 f"\nEarly stopping triggered after {early_stopping_patience} epochs with no improvement."
             )
@@ -160,6 +161,7 @@ history, best_weights = train(
     optimizer,
     scheduler,
     device,
+    use_early_stopping=EARLY_STOPPING,
 )
 
 if best_weights:
