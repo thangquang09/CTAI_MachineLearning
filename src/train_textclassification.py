@@ -152,8 +152,6 @@ def train(
     optimizer,
     scheduler,
     device,
-    early_stopping_patience=10,
-    use_early_stopping=True,
 ):
     model.to(device)
     train_losses = []
@@ -162,12 +160,16 @@ def train(
     val_accuracies = []
     pair_accuracies = []
 
-    best_weights = None
+    # Track cả 2 metrics để lưu 2 models
     best_val_loss = float("inf")
-    epochs_no_improve = 0
+    best_pair_accuracy = 0.0
+    best_weights_val_loss = None
+    best_weights_pair_acc = None
+    best_val_loss_epoch = 0
+    best_pair_acc_epoch = 0
 
-    print("Epoch | Time  | Train Acc | Train Loss | Val Acc | Val Loss | Pair Acc")
-    print("-" * 75)
+    print("Epoch | Time  | Train Acc | Train Loss | Val Acc | Val Loss | Pair Acc | Best VL | Best PA")
+    print("-" * 95)
 
     for epoch in range(max_epoch):
         model.train()
@@ -205,19 +207,26 @@ def train(
         # Learning rate scheduling
         scheduler.step(val_loss)
 
-        # Early stopping check
+        # Track best models cho cả 2 metrics
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_weights = model.state_dict().copy()
-            epochs_no_improve = 0
-        else:
-            epochs_no_improve += 1
+            best_weights_val_loss = model.state_dict().copy()
+            best_val_loss_epoch = epoch + 1
 
-        # Print progress
+        if pair_accuracy > best_pair_accuracy:
+            best_pair_accuracy = pair_accuracy
+            best_weights_pair_acc = model.state_dict().copy()
+            best_pair_acc_epoch = epoch + 1
+
+        # Print progress với best epoch indicators
+        val_loss_indicator = "🔥" if val_loss == best_val_loss else "  "
+        pair_acc_indicator = "🎯" if pair_accuracy == best_pair_accuracy else "  "
+        
         print(
             f"{epoch + 1:5d} | {time.time() - epoch_start_time:5.2f}s | "
             f"{epoch_accuracy:8.3f}% | {epoch_loss:9.6f} | "
-            f"{val_accuracy:6.3f}% | {val_loss:8.6f} | {pair_accuracy:7.3f}%"
+            f"{val_accuracy:6.3f}% | {val_loss:8.6f} | {pair_accuracy:7.3f}% | "
+            f"E{best_val_loss_epoch:2d}{val_loss_indicator} | E{best_pair_acc_epoch:2d}{pair_acc_indicator}"
         )
 
         # Store metrics
@@ -227,20 +236,19 @@ def train(
         val_accuracies.append(val_accuracy)
         pair_accuracies.append(pair_accuracy)
 
-        # Early stopping
-        if use_early_stopping and epochs_no_improve >= early_stopping_patience:
-            print(f"\nEarly stopping triggered after {early_stopping_patience} epochs with no improvement.")
-            break
-
     history = {
         "train_losses": train_losses,
         "train_accuracies": train_accuracies,
         "val_losses": val_losses,
         "val_accuracies": val_accuracies,
         "pair_accuracies": pair_accuracies,
+        "best_val_loss": best_val_loss,
+        "best_pair_accuracy": best_pair_accuracy,
+        "best_val_loss_epoch": best_val_loss_epoch,
+        "best_pair_acc_epoch": best_pair_acc_epoch,
     }
 
-    return history, best_weights
+    return history, best_weights_val_loss, best_weights_pair_acc
 
 
 # Start training
@@ -249,9 +257,10 @@ print(f"Train dataset: {len(train_dataset)} samples")
 print(f"Val dataset: {len(val_dataset)} samples")
 print(f"Pair validation: {len(val_pair_dataset)} pairs")
 print(f"Device: {device}")
-print("-" * 75)
+print(f"Early stopping: DISABLED - Training full {NUM_EPOCHS} epochs")
+print("-" * 95)
 
-history, best_weights = train(
+history, best_weights_val_loss, best_weights_pair_acc = train(
     model,
     NUM_EPOCHS,
     train_dataloader,
@@ -261,30 +270,39 @@ history, best_weights = train(
     optimizer,
     scheduler,
     device,
-    use_early_stopping=EARLY_STOPPING,
 )
 
-# Save best model
-if best_weights:
-    os.makedirs("models", exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    model_name = model._get_name()
-    model_save_path = os.path.join("models", f"{model_name}_case{CASE}_{timestamp}.pth")
-    
-    torch.save(best_weights, model_save_path)
-    print(f"\nModel with best validation loss saved to: {model_save_path}")
-else:
-    print("\nTraining completed, but no best model was saved.")
+# Save cả 2 models
+os.makedirs("models", exist_ok=True)
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+model_name = model._get_name()
 
-# Create visualization
+# Model 1: Best validation loss
+if best_weights_val_loss:
+    model_save_path_val = os.path.join("models", f"{model_name}_case{CASE}_best_val_loss_{timestamp}.pth")
+    torch.save(best_weights_val_loss, model_save_path_val)
+    print(f"\n🔥 Model with best validation loss (epoch {history['best_val_loss_epoch']}) saved to:")
+    print(f"   {model_save_path_val}")
+    print(f"   Best val loss: {history['best_val_loss']:.6f}")
+
+# Model 2: Best pair accuracy
+if best_weights_pair_acc:
+    model_save_path_pair = os.path.join("models", f"{model_name}_case{CASE}_best_pair_acc_{timestamp}.pth")
+    torch.save(best_weights_pair_acc, model_save_path_pair)
+    print(f"\n🎯 Model with best pair accuracy (epoch {history['best_pair_acc_epoch']}) saved to:")
+    print(f"   {model_save_path_pair}")
+    print(f"   Best pair accuracy: {history['best_pair_accuracy']:.3f}%")
+
+# Enhanced visualization
 os.makedirs("plots", exist_ok=True)
 
-plt.figure(figsize=(18, 6))
+plt.figure(figsize=(20, 8))
 
-# Plot 1: Loss
-plt.subplot(1, 3, 1)
+# Plot 1: Loss với best epoch markers
+plt.subplot(1, 4, 1)
 plt.plot(history["train_losses"], label="Training Loss")
 plt.plot(history["val_losses"], label="Validation Loss")
+plt.axvline(x=history['best_val_loss_epoch']-1, color='red', linestyle='--', alpha=0.7, label=f'Best Val Loss (E{history["best_val_loss_epoch"]})')
 plt.xlabel("Epochs")
 plt.ylabel("Loss")
 plt.title("Training and Validation Loss")
@@ -292,7 +310,7 @@ plt.legend()
 plt.grid(True)
 
 # Plot 2: Individual text accuracy
-plt.subplot(1, 3, 2)
+plt.subplot(1, 4, 2)
 plt.plot(history["train_accuracies"], label="Training Accuracy")
 plt.plot(history["val_accuracies"], label="Validation Accuracy")
 plt.xlabel("Epochs")
@@ -301,12 +319,26 @@ plt.title("Individual Text Classification Accuracy")
 plt.legend()
 plt.grid(True)
 
-# Plot 3: Pair comparison accuracy
-plt.subplot(1, 3, 3)
-plt.plot(history["pair_accuracies"], label="Pair Accuracy", color='red')
+# Plot 3: Pair comparison accuracy với best epoch marker
+plt.subplot(1, 4, 3)
+plt.plot(history["pair_accuracies"], label="Pair Accuracy", color='green', linewidth=2)
+plt.axvline(x=history['best_pair_acc_epoch']-1, color='red', linestyle='--', alpha=0.7, label=f'Best Pair Acc (E{history["best_pair_acc_epoch"]})')
 plt.xlabel("Epochs")
 plt.ylabel("Accuracy (%)")
-plt.title("Pair Comparison Accuracy (Original Task)")
+plt.title("Pair Comparison Accuracy")
+plt.legend()
+plt.grid(True)
+
+# Plot 4: So sánh best epochs
+plt.subplot(1, 4, 4)
+epochs = list(range(1, len(history["val_losses"]) + 1))
+plt.plot(epochs, history["val_losses"], label="Val Loss", color='blue')
+plt.plot(epochs, [acc/100 for acc in history["pair_accuracies"]], label="Pair Acc (scaled)", color='green')
+plt.axvline(x=history['best_val_loss_epoch'], color='blue', linestyle='--', alpha=0.7, label=f'Best Val Loss E{history["best_val_loss_epoch"]}')
+plt.axvline(x=history['best_pair_acc_epoch'], color='green', linestyle='--', alpha=0.7, label=f'Best Pair Acc E{history["best_pair_acc_epoch"]}')
+plt.xlabel("Epochs")
+plt.ylabel("Normalized Values")
+plt.title("Best Epochs Comparison")
 plt.legend()
 plt.grid(True)
 
@@ -314,14 +346,25 @@ plt.tight_layout()
 
 # Save plots
 timestamp_plot = datetime.now().strftime("%Y%m%d_%H%M%S")
-plot_path = os.path.join("plots", f"textclassification_case{CASE}_{timestamp_plot}.png")
+plot_path = os.path.join("plots", f"dual_textclassification_case{CASE}_{timestamp_plot}.png")
 plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 plt.close()
 
-print(f"Plots saved to: {plot_path}")
+print(f"\n📊 Enhanced plots saved to: {plot_path}")
 
-# Final evaluation
-if best_weights:
-    model.load_state_dict(best_weights)
-    final_pair_acc = evaluate_pairs(model, val_pair_dataloader)
-    print(f"\nFinal pair comparison accuracy: {final_pair_acc:.3f}%")
+# Final evaluation với cả 2 models
+print(f"\n{'='*60}")
+print(f"FINAL COMPARISON:")
+print(f"{'='*60}")
+
+if best_weights_val_loss:
+    model.load_state_dict(best_weights_val_loss)
+    final_pair_acc_val = evaluate_pairs(model, val_pair_dataloader)
+    print(f"🔥 Best Val Loss Model  (E{history['best_val_loss_epoch']:2d}): Pair Accuracy = {final_pair_acc_val:.3f}%")
+
+if best_weights_pair_acc:
+    model.load_state_dict(best_weights_pair_acc)
+    final_pair_acc_pair = evaluate_pairs(model, val_pair_dataloader)
+    print(f"🎯 Best Pair Acc Model (E{history['best_pair_acc_epoch']:2d}): Pair Accuracy = {final_pair_acc_pair:.3f}%")
+
+print(f"{'='*60}")

@@ -7,6 +7,6 @@ OUTPUT_DIM = 1 # Output 1 giá trị logit cho binary classification
 NUM_EPOCHS = 30
 LEARNING_RATE = 5e-4  # Giảm từ 1e-3 xuống 5e-4
 SEQ_LENGTH = 600
-EARLY_STOPPING = True
+EARLY_STOPPING = False  # Tắt early stopping để train full epochs
 
 
