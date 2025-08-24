@@ -116,6 +116,7 @@ def get_dataset(case: int = 1):
     dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
 
     nltk.download('punkt')
+    nltk.download('punkt_tab')
     train_df = dataset[f"case{case}_train"].to_pandas()
     val_df = dataset[f"case{case}_validation"].to_pandas()
 
