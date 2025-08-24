@@ -1,5 +1,7 @@
+import datetime
 import os
 import time
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import torch
@@ -9,7 +11,7 @@ from torch.utils.data import DataLoader
 
 from build_dataset_dataloader import get_dataset
 from CONFIG import *
-from LSTM import SiameseLSTM
+from LSTM import PairClassifier, SiameseLSTM
 
 train_dataset, val_dataset, vocabulary = get_dataset(case=CASE)
 
@@ -17,7 +19,14 @@ train_dataset, val_dataset, vocabulary = get_dataset(case=CASE)
 train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-model = SiameseLSTM(
+# model = SiameseLSTM(
+#     vocab_size=len(vocabulary),
+#     embedding_dim=EMBEDDING_DIM,
+#     hidden_dim=HIDDEN_DIM,
+#     output_dim=OUTPUT_DIM,
+# )
+
+model = PairClassifier(
     vocab_size=len(vocabulary),
     embedding_dim=EMBEDDING_DIM,
     hidden_dim=HIDDEN_DIM,
@@ -102,9 +111,7 @@ def train(
             optimizer.step()
 
         epoch_accuracy = 100 * running_correct / total
-        epoch_loss = running_loss / len(
-            train_dataloader
-        )
+        epoch_loss = running_loss / len(train_dataloader)
 
         test_loss, test_accuracy = evaluate(model, valid_dataloader, criterion)
 
@@ -167,9 +174,10 @@ history, best_weights = train(
 if best_weights:
     # Tạo thư mục 'models' nếu nó chưa tồn tại
     os.makedirs("models", exist_ok=True)
-
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # Đặt tên file cho model, có thể thêm cả case để phân biệt
-    model_save_path = os.path.join("models", f"Siamese_LSTM_case{CASE}.pth")
+    model_name = model._get_name()
+    model_save_path = os.path.join("models", f"{model_name}_case{CASE}_{timestamp}.pth")
 
     # Lưu state_dict của model
     torch.save(best_weights, model_save_path)
@@ -208,8 +216,10 @@ plt.grid(True)
 plt.tight_layout()
 
 # Save the figure
-plot_path = os.path.join("plots", f"loss_accuracy_case{CASE}.png")
+timestamp_plot = datetime.now().strftime("%Y%m%d_%H%M%S")
+plot_path = os.path.join("plots", f"loss_accuracy_case{CASE}_{timestamp_plot}.png")
 plt.savefig(plot_path)
 plt.close()
+
 
 print(f"Plots saved to: {plot_path}")

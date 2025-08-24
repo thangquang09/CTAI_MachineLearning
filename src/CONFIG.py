@@ -1,11 +1,11 @@
-CASE = 2
+CASE = 1
 BATCH_SIZE = 64
 
 EMBEDDING_DIM = 512
 HIDDEN_DIM = 512
 OUTPUT_DIM = 1 # Output 1 giá trị logit cho binary classification
 NUM_EPOCHS = 30
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 5e-4  # Giảm từ 1e-3 xuống 5e-4
 SEQ_LENGTH = 600
 EARLY_STOPPING = True
 

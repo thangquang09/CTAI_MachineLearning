@@ -27,11 +27,11 @@ test_df.dropna(inplace=True)
 print("\n--- Processing Case 1: Train Data Only ---")
 train_data_c1, valid_data_c1 = train_test_split(train_df, test_size=20, random_state=42, shuffle=True)
 
-# Augmentation
-augmented_data = train_data_c1.copy()
-augmented_data['file_1'], augmented_data['file_2'] = augmented_data['file_2'], augmented_data['file_1']
-augmented_data['label'] = augmented_data['label'].map({1: 2, 2: 1})
-train_data_c1 = pd.concat([train_data_c1, augmented_data], ignore_index=True)
+# # Augmentation
+# augmented_data = train_data_c1.copy()
+# augmented_data['file_1'], augmented_data['file_2'] = augmented_data['file_2'], augmented_data['file_1']
+# augmented_data['label'] = augmented_data['label'].map({1: 2, 2: 1})
+# train_data_c1 = pd.concat([train_data_c1, augmented_data], ignore_index=True)
 
 print("Train shape (augmented):", train_data_c1.shape)
 print("Validation shape:", valid_data_c1.shape)
