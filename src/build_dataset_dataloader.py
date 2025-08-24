@@ -10,7 +10,7 @@ import torch
 from datasets import load_dataset
 from nltk.tokenize import word_tokenize
 from torch.utils.data import DataLoader, Dataset
-
+import nltk
 
 MAX_LEN = 600
 
@@ -115,6 +115,7 @@ def text_to_sequence(text, vocab):
 def get_dataset(case: int = 1):
     dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
 
+    nltk.download('punkt')
     train_df = dataset[f"case{case}_train"].to_pandas()
     val_df = dataset[f"case{case}_validation"].to_pandas()
 
