@@ -183,7 +183,7 @@ if best_weights:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # Đặt tên file cho model, có thể thêm cả case để phân biệt
     model_name = model._get_name()
-    model_save_path = os.path.join("models", f"{model_name}_case{CASE}_{timestamp}.pth")
+    model_save_path = os.path.join("models", f"{timestamp}_{model_name}_case{CASE}.pth")
 
     # Lưu state_dict của model
     torch.save(best_weights, model_save_path)
@@ -229,69 +229,3 @@ plt.close()
 
 
 print(f"Plots saved to: {plot_path}")
-
-# ===================== MAKE SUBMISSION =====================
-print("\n" + "="*60)
-print("MAKING SUBMISSION")
-print("="*60)
-
-import pandas as pd
-from load_data import read_texts_from_dir
-from build_dataset_dataloader import TextComparisonDataset
-
-# Load test data
-print("Loading test data...")
-df_test = read_texts_from_dir('/home/thangquang09/CODE/CTAI_MachineLearning/data/fake-or-real-the-impostor-hunt/data/test')
-df_test['label'] = 3  # Dummy label
-
-print(f"Test dataset size: {len(df_test)} samples")
-
-# Create test dataset and dataloader
-test_dataset = TextComparisonDataset(df_test, vocabulary)
-test_dataloader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
-
-# Load best model for prediction
-if best_weights:
-    model.load_state_dict(best_weights)
-    model.to(device)
-    model.eval()
-    
-    print("Making predictions...")
-    full_predicted = []
-    
-    with torch.no_grad():
-        for seq1, seq2, labels in test_dataloader:
-            seq1, seq2 = seq1.to(device), seq2.to(device)
-            outputs = model(seq1, seq2)
-            predicted = (torch.sigmoid(outputs.squeeze(1)) > 0.5).float()
-            full_predicted.append(predicted)
-    
-    # Concatenate all predictions
-    full_predicted = torch.cat(full_predicted, dim=0)
-    full_predicted = full_predicted.cpu().numpy()
-    full_predicted = full_predicted + 1  # Convert 0,1 to 1,2
-    
-    # Create submission DataFrame
-    submission = pd.DataFrame({
-        "id": df_test.index,
-        "real_text_id": full_predicted.astype(int)
-    }).sort_values("id")
-    
-    # Create submission directory if it doesn't exist
-    os.makedirs("submission", exist_ok=True)
-    
-    # Create submission filename with timestamp
-    timestamp_sub = datetime.now().strftime("%Y%m%d_%H%M%S")
-    submission_filename = f"submission_{model._get_name().lower()}_case{CASE}_{timestamp_sub}.csv"
-    submission_path = os.path.join("submission", submission_filename)
-    
-    # Save submission
-    submission.to_csv(submission_path, index=False)
-    print(f"✅ Submission saved to: {submission_path}")
-    print(f"   Predictions shape: {full_predicted.shape}")
-    print(f"   Unique predictions: {sorted(submission['real_text_id'].unique())}")
-    
-else:
-    print("❌ No trained model available for submission")
-
-print("="*60)

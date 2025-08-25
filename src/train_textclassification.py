@@ -286,7 +286,7 @@ model_name = model._get_name()
 
 # Model 1: Best validation loss
 if best_weights_val_loss:
-    model_save_path_val = os.path.join("models", f"{model_name}_case{CASE}_best_val_loss_{timestamp}.pth")
+    model_save_path_val = os.path.join("models", f"{timestamp}_{model_name}_case{CASE}_best_val_loss.pth")
     torch.save(best_weights_val_loss, model_save_path_val)
     print(f"\n🔥 Model with best validation loss (epoch {history['best_val_loss_epoch']}) saved to:")
     print(f"   {model_save_path_val}")
@@ -294,7 +294,7 @@ if best_weights_val_loss:
 
 # Model 2: Best pair accuracy
 if best_weights_pair_acc:
-    model_save_path_pair = os.path.join("models", f"{model_name}_case{CASE}_best_pair_acc_{timestamp}.pth")
+    model_save_path_pair = os.path.join("models", f"{timestamp}_{model_name}_case{CASE}_best_pair_acc.pth")
     torch.save(best_weights_pair_acc, model_save_path_pair)
     print(f"\n🎯 Model with best pair accuracy (epoch {history['best_pair_acc_epoch']}) saved to:")
     print(f"   {model_save_path_pair}")
@@ -375,101 +375,3 @@ if best_weights_pair_acc:
     print(f"🎯 Best Pair Acc Model (E{history['best_pair_acc_epoch']:2d}): Pair Accuracy = {final_pair_acc_pair:.3f}%")
 
 print(f"{'='*60}")
-
-# ===================== MAKE SUBMISSION =====================
-print("\n" + "="*60)
-print("MAKING SUBMISSION")
-print("="*60)
-
-import pandas as pd
-from load_data import read_texts_from_dir
-
-# Load test data
-print("Loading test data...")
-df_test = read_texts_from_dir('/home/thangquang09/CODE/CTAI_MachineLearning/data/fake-or-real-the-impostor-hunt/data/test')
-df_test['label'] = 3  # Dummy label
-
-print(f"Test dataset size: {len(df_test)} samples")
-
-# Create test dataset using pair comparison format for confidence-based prediction
-from build_dataset_dataloader import TextComparisonDataset
-test_dataset_pair = TextComparisonDataset(df_test, vocabulary)
-test_dataloader_pair = DataLoader(test_dataset_pair, batch_size=BATCH_SIZE, shuffle=False)
-
-# Function to make submission with confidence-based approach
-def make_submission_with_confidence(model_weights, model_name_suffix):
-    if model_weights is None:
-        print(f"❌ No {model_name_suffix} model available")
-        return None
-        
-    # Load model
-    model.load_state_dict(model_weights)
-    model.to(device)
-    model.eval()
-    
-    print(f"Making predictions with {model_name_suffix} model...")
-    full_predicted = []
-    
-    with torch.no_grad():
-        for seq1, seq2, labels in test_dataloader_pair:
-            seq1, seq2 = seq1.to(device), seq2.to(device)
-            
-            # Use confidence-based prediction
-            predictions, explanations = predict_pair_confidence(model, seq1, seq2)
-            full_predicted.append(predictions)
-    
-    # Concatenate all predictions
-    full_predicted = torch.cat(full_predicted, dim=0)
-    full_predicted = full_predicted.cpu().numpy()
-    full_predicted = full_predicted + 1  # Convert 0,1 to 1,2
-    
-    # Create submission DataFrame
-    submission = pd.DataFrame({
-        "id": df_test.index,
-        "real_text_id": full_predicted.astype(int)
-    }).sort_values("id")
-    
-    # Create submission directory if it doesn't exist
-    os.makedirs("submission", exist_ok=True)
-    
-    # Create submission filename with timestamp
-    timestamp_sub = datetime.now().strftime("%Y%m%d_%H%M%S")
-    submission_filename = f"submission_{model_name.lower()}_{model_name_suffix}_case{CASE}_{timestamp_sub}.csv"
-    submission_path = os.path.join("submission", submission_filename)
-    
-    # Save submission
-    submission.to_csv(submission_path, index=False)
-    print(f"✅ {model_name_suffix} submission saved to: {submission_path}")
-    print(f"   Predictions shape: {full_predicted.shape}")
-    print(f"   Unique predictions: {sorted(submission['real_text_id'].unique())}")
-    
-    return submission_path
-
-# Make submissions for both models
-print("\n1. Creating submission with BEST VAL LOSS model:")
-submission_path_val = make_submission_with_confidence(best_weights_val_loss, "best_val_loss")
-
-print("\n2. Creating submission with BEST PAIR ACCURACY model:")
-submission_path_pair = make_submission_with_confidence(best_weights_pair_acc, "best_pair_acc")
-
-# Compare predictions if both models exist
-if submission_path_val and submission_path_pair:
-    print(f"\n📊 SUBMISSION COMPARISON:")
-    
-    sub_val = pd.read_csv(submission_path_val)
-    sub_pair = pd.read_csv(submission_path_pair)
-    
-    # Calculate agreement
-    agreement = (sub_val['real_text_id'] == sub_pair['real_text_id']).mean() * 100
-    print(f"   Agreement between models: {agreement:.1f}%")
-    
-    # Show prediction distribution
-    print(f"   Val Loss Model  - Label 1: {(sub_val['real_text_id'] == 1).sum():3d}, Label 2: {(sub_val['real_text_id'] == 2).sum():3d}")
-    print(f"   Pair Acc Model  - Label 1: {(sub_pair['real_text_id'] == 1).sum():3d}, Label 2: {(sub_pair['real_text_id'] == 2).sum():3d}")
-    
-    if agreement < 100:
-        print(f"\n⚠️  Models disagree on {100-agreement:.1f}% of predictions!")
-        disagreements = sub_val[sub_val['real_text_id'] != sub_pair['real_text_id']]
-        print(f"   First few disagreements (IDs): {disagreements['id'].head().tolist()}")
-
-print("="*60)
