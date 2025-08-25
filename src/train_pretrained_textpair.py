@@ -2,6 +2,8 @@ import argparse
 import datetime
 import os
 import time
+import re
+import string
 from datetime import datetime
 
 import matplotlib.pyplot as plt
@@ -10,11 +12,11 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
-import pandas as pd
+from datasets import load_dataset
+import nltk
 
-from load_data import read_texts_from_dir
-from PretrainedModel import PretrainedPairClassifier, PretrainedSiameseModel, PRETRAINED_MODELS, get_model_name
-from CONFIG import BATCH_SIZE, NUM_EPOCHS, LEARNING_RATE, EARLY_STOPPING
+from PretrainedModel import PretrainedPairClassifier, PretrainedSiameseModel, get_model_name
+from CONFIG import BATCH_SIZE, NUM_EPOCHS
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--case', type=int, default=1, help='Case number (1 or 2)')
@@ -87,19 +89,76 @@ class PretrainedPairDataset(Dataset):
         }
 
 
+def preprocessing(text: str) -> str:
+    """Preprocessing function from build_dataset_dataloader.py"""
+    text = text.replace("\n", " ")
+
+    for char in string.punctuation:
+        text = text.replace(char, " ")
+
+    url_pattern = re.compile(r"https?://\s+\wwww\.\s+")
+    text = url_pattern.sub(r" ", text)
+
+    emoji_pattern = re.compile(
+        "["
+        "\U0001f600-\U0001f64f"  # emoticons
+        "\U0001f300-\U0001f5ff"  # symbols & pictographs
+        "\U0001f680-\U0001f6ff"  # transport & map symbols
+        "\U0001f1e0-\U0001f1ff"  # flags (iOS)
+        "\U0001f1f2-\U0001f1f4"  # Macau flag
+        "\U0001f1e6-\U0001f1ff"  # flags
+        "\U0001f600-\U0001f64f"
+        "\U00002702-\U000027b0"
+        "\U000024c2-\U0001f251"
+        "\U0001f926-\U0001f937"
+        "\U0001f1f2"
+        "\U0001f1f4"
+        "\U0001f620"
+        "\u200d"
+        "\u2640-\u2642"
+        "]+",
+        flags=re.UNICODE,
+    )
+
+    text = emoji_pattern.sub(r" ", text)
+    text = " ".join(text.split())
+    return text.lower()
+
+
 def load_datasets(case):
-    """Load train and validation datasets"""
-    if case == 1:
-        train_data = read_texts_from_dir("./data/fake-or-real-the-impostor-hunt/data/train")
-        val_data = read_texts_from_dir("./data/fake-or-real-the-impostor-hunt/data/validation")
-    else:
-        train_data = read_texts_from_dir("./data/fake-or-real-the-impostor-hunt/data/train_2")
-        val_data = read_texts_from_dir("./data/fake-or-real-the-impostor-hunt/data/validation_2")
+    """Load train and validation datasets from HuggingFace"""
+    print("Loading dataset from HuggingFace...")
+    dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
     
-    print(f"Train dataset: {len(train_data)} samples")
-    print(f"Val dataset: {len(val_data)} samples")
+    # Download nltk data if needed
+    try:
+        nltk.download("punkt", quiet=True)
+        nltk.download("punkt_tab", quiet=True)
+    except Exception:
+        pass
     
-    return train_data, val_data
+    # Load dataframes
+    train_df = dataset[f"case{case}_train"].to_pandas()
+    val_df = dataset[f"case{case}_validation"].to_pandas()
+    
+    # Clean data
+    train_df.dropna(inplace=True)
+    val_df.dropna(inplace=True)
+    
+    # Apply preprocessing
+    train_df["file_1"] = train_df["file_1"].apply(preprocessing)
+    train_df["file_2"] = train_df["file_2"].apply(preprocessing)
+    val_df["file_1"] = val_df["file_1"].apply(preprocessing) 
+    val_df["file_2"] = val_df["file_2"].apply(preprocessing)
+    
+    # Rename columns for consistency
+    train_df = train_df.rename(columns={'file_1': 'text1', 'file_2': 'text2'})
+    val_df = val_df.rename(columns={'file_1': 'text1', 'file_2': 'text2'})
+    
+    print(f"Train dataset: {len(train_df)} samples")
+    print(f"Val dataset: {len(val_df)} samples")
+    
+    return train_df, val_df
 
 
 # Load data
@@ -272,7 +331,7 @@ history, best_weights = train(
     optimizer,
     scheduler,
     device,
-    use_early_stopping=EARLY_STOPPING,
+    use_early_stopping=True,
 )
 
 # Save model
