@@ -67,8 +67,8 @@ class PairClassifier(nn.Module):
         h1 = torch.cat((h1[-2, :, :], h1[-1, :, :]), dim=1)
         h2 = torch.cat((h2[-2, :, :], h2[-1, :, :]), dim=1)
         
-        # Combine features như SiameseLSTM
-        combined = torch.cat([h1, h2, torch.abs(h1 - h2), h1 * h2], dim=1)
+        # Combine features như SiameseLSTM (preserve direction)
+        combined = torch.cat([h1, h2, h1 - h2, h1 * h2], dim=1)
         
         return self.classifier(combined)
 
