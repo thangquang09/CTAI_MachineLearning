@@ -29,20 +29,20 @@ val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 val_pair_dataloader = DataLoader(val_pair_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
 # Model selection
-model = TextClassificationLSTM(
-    vocab_size=len(vocabulary),
-    embedding_dim=EMBEDDING_DIM,
-    hidden_dim=HIDDEN_DIM,
-    output_dim=OUTPUT_DIM,
-)
-
-# Alternative model with attention
-# model = TextClassificationLSTMWithAttention(
+# model = TextClassificationLSTM(
 #     vocab_size=len(vocabulary),
 #     embedding_dim=EMBEDDING_DIM,
 #     hidden_dim=HIDDEN_DIM,
 #     output_dim=OUTPUT_DIM,
 # )
+
+# Alternative model with attention
+model = TextClassificationLSTMWithAttention(
+    vocab_size=len(vocabulary),
+    embedding_dim=EMBEDDING_DIM,
+    hidden_dim=HIDDEN_DIM,
+    output_dim=OUTPUT_DIM,
+)
 
 criterion = nn.BCEWithLogitsLoss()
 optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
