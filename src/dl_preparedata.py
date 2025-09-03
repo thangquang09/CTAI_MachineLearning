@@ -15,6 +15,8 @@ print("Reading and preparing initial data...")
 train_texts_df = read_texts_from_dir("./data/fake-or-real-the-impostor-hunt/data/train")
 train_labels_df = pd.read_csv("./data/fake-or-real-the-impostor-hunt/data/train.csv")
 test_df = pd.read_csv("./data/X_test_ground_truth.csv")
+submission_df = read_texts_from_dir("./data/fake-or-real-the-impostor-hunt/data/test")
+submission_df['label'] = 3 # giá trị thế chỗ
 
 # An toàn hơn khi merge bằng 'id'
 train_df = pd.merge(train_texts_df, train_labels_df, on='id')
@@ -82,7 +84,8 @@ def create_dataset_dict(case1_train_ds=None, case1_valid_ds=None, case2_train_ds
             'case1_train': case1_train_ds,
             'case1_validation': case1_valid_ds,
             'case2_train': case2_train_ds,
-            'case2_validation': case2_valid_ds
+            'case2_validation': case2_valid_ds,
+            'test': Dataset.from_pandas(submission_df.reset_index(drop=True))
         })
     else:
         print("Reading from CSV files with UTF-8 encoding...")
@@ -97,7 +100,8 @@ def create_dataset_dict(case1_train_ds=None, case1_valid_ds=None, case2_train_ds
             'case1_train': Dataset.from_pandas(case1_train.reset_index(drop=True)),
             'case1_validation': Dataset.from_pandas(case1_valid.reset_index(drop=True)),
             'case2_train': Dataset.from_pandas(case2_train.reset_index(drop=True)),
-            'case2_validation': Dataset.from_pandas(case2_valid.reset_index(drop=True))
+            'case2_validation': Dataset.from_pandas(case2_valid.reset_index(drop=True)),
+            'test': Dataset.from_pandas(submission_df.reset_index(drop=True))
         })
     
     print("DatasetDict created successfully. Features are consistent.")
@@ -112,7 +116,8 @@ def save_datasets_as_pickle(case1_train_ds, case1_valid_ds, case2_train_ds, case
         'case1_train': case1_train_ds,
         'case1_validation': case1_valid_ds,
         'case2_train': case2_train_ds,
-        'case2_validation': case2_valid_ds
+        'case2_validation': case2_valid_ds,
+        'test': Dataset.from_pandas(submission_df.reset_index(drop=True))
     }
     
     # Tạo thư mục nếu chưa có
@@ -132,7 +137,7 @@ def load_datasets_from_pickle():
     print("\n--- Loading datasets from pickle files ---")
     
     datasets = {}
-    names = ['case1_train', 'case1_validation', 'case2_train', 'case2_validation']
+    names = ['case1_train', 'case1_validation', 'case2_train', 'case2_validation', 'test']
     
     for name in names:
         pickle_path = f"./data/data_for_dl/pickle_datasets/{name}.pkl"
