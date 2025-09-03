@@ -1,3 +1,4 @@
+import argparse
 import re
 import string
 
@@ -12,7 +13,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
 from ml_objective import cb_objective, lr_objective, rf_objective
-
 
 # === MODEL CONFIGURATION MAPPING ===
 MODEL_CONFIG = {
@@ -181,6 +181,8 @@ def train(model_class, embedding_model, train_df, valid_df, train_pair_df, valid
     
     # Create model with best parameters
     print(f"\n🔧 Creating {config['model_name']} with optimized parameters...")
+    
+    # Handle special parameter conversions
     if model_class == RandomForestClassifier:
         # Ensure random_state and n_jobs are set
         best_params.update({'random_state': 42, 'n_jobs': -1})
@@ -188,6 +190,9 @@ def train(model_class, embedding_model, train_df, valid_df, train_pair_df, valid
         # Ensure random_state, verbose, and thread_count are set
         best_params.update({'random_state': 42, 'verbose': 0, 'thread_count': -1})
     elif model_class == LogisticRegression:
+        # Convert penalty "none" to None if needed
+        if best_params.get('penalty') == 'none':
+            best_params['penalty'] = None
         # Ensure random_state and max_iter are set
         best_params.update({'random_state': 42, 'max_iter': 10000})
     
@@ -221,7 +226,7 @@ def train(model_class, embedding_model, train_df, valid_df, train_pair_df, valid
     return model, results
 
 
-def create_submission(model, embedding_model, embedding_model_name, test_df, case, results):
+def create_submission(model, embedding_model, test_df, case, results):
     """Create submission file with model info."""
     print("\n📤 Making predictions on test set...")
     y_preds_submission = eval_text_pair(
@@ -232,11 +237,33 @@ def create_submission(model, embedding_model, embedding_model_name, test_df, cas
         {"id": test_df.index, "real_text_id": np.array(y_preds_submission).astype(int)}
     ).sort_values("id")
 
-    # Create informative filename
+    # Create filename with model and embedding names
     model_name = results['model_name']
-    normalized_model_name = model_name.split('/')[-1].replace(" ", "").replace("-", "_")
-    submission_filename = f"submission_case{case}_{normalized_model_name}_{embedding_model_name}.csv"
-
+    
+    # Get embedding model name and normalize it
+    try:
+        # Try to get the model name from the config
+        if hasattr(embedding_model, '_modules') and hasattr(embedding_model._modules['0'], 'auto_model'):
+            embedding_model_path = embedding_model._modules['0'].auto_model.config.name_or_path
+        elif hasattr(embedding_model, 'model_name'):
+            embedding_model_path = embedding_model.model_name
+        else:
+            # Fallback to default name
+            embedding_model_path = "intfloat/multilingual-e5-small"
+    except Exception:
+        # If all fails, use default
+        embedding_model_path = "multilingual_e5_small"
+    
+    # Get last part after '/' and normalize
+    embedding_name = embedding_model_path.split('/')[-1]
+    safe_embedding_name = embedding_name.replace("-", "_").replace(".", "_").replace(" ", "")
+    
+    # Normalize model name
+    safe_model_name = model_name.replace("/", "_").replace("-", "_").replace(" ", "")
+    
+    # Create filename: submission_case{case}_{model_name}_{embedding_name}.csv
+    submission_filename = f"submission_case{case}_{safe_model_name}_{safe_embedding_name}.csv"
+    
     submission.to_csv(submission_filename, index=False)
     print(f"✅ Submission saved to: {submission_filename}")
     
@@ -246,7 +273,16 @@ def create_submission(model, embedding_model, embedding_model_name, test_df, cas
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
     # === CONFIGURATION ===
-    case = 2
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
+    parser.add_argument(
+        "--embedding_model", type=str, default="all-MiniLM-L6-v2", help="Embedding Model Name"
+    )
+
+    args = parser.parse_args()
+
+    case = args.case
+    base_model_name = args.embedding_model
     merge_option = True
     
     # 🎯 CHỌN MODEL
@@ -285,8 +321,7 @@ if __name__ == "__main__":
     print(f"📏 Train samples: {len(train_textclf_df)}, Valid samples: {len(valid_textclf_df)}")
 
     # Initialize embedding model
-    embedding_model_name = "sentence-transformers/all-mpnet-base-v2"
-    embedding_model = SentenceTransformer(embedding_model_name)
+    embedding_model = SentenceTransformer(base_model_name)
     print(f"🤖 Using embedding model: {embedding_model}")
 
     # === TRAINING ===
@@ -295,7 +330,7 @@ if __name__ == "__main__":
     )
 
     # === SUBMISSION ===
-    submission_filename = create_submission(trained_model, embedding_model, embedding_model_name, test_df, case, results)
+    submission_filename = create_submission(trained_model, embedding_model, test_df, case, results)
 
     # === SUMMARY ===
     print("\n" + "="*60)

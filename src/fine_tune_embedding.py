@@ -210,7 +210,6 @@ def fine_tune_embedding(
     # Shuffle training examples trước khi tạo dataset
     random.shuffle(train_examples)
 
-    # Dataset và DataLoader (không shuffle vì đã shuffle examples rồi)
     train_dataset = SentenceLabelDataset(train_examples)
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size)
 

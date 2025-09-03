@@ -11,8 +11,12 @@ def lr_objective(trial, train_embeddings, train_labels, valid_embeddings, valid_
     solver = trial.suggest_categorical("solver", ["liblinear", "saga", "lbfgs"])
     class_weight = trial.suggest_categorical("class_weight", ["balanced", None])
 
+    # Convert "none" to None for penalty
+    if penalty == "none":
+        penalty = None
+
     # Handle solver-penalty compatibility
-    if solver == "liblinear" and penalty in ["elasticnet", "none"]:
+    if solver == "liblinear" and penalty in ["elasticnet", None]:
         penalty = "l2"  # liblinear only supports l1, l2
     if solver == "lbfgs" and penalty in ["l1", "elasticnet"]:
         penalty = "l2"  # lbfgs doesn't support l1, elasticnet

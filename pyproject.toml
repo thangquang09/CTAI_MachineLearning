@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "accelerate>=1.10.1",
     "catboost>=1.2.8",
     "datasets>=4.0.0",
     "dotenv>=0.9.9",
