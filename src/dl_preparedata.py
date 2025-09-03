@@ -56,7 +56,7 @@ print("\n--- Processing Case 2: Merged Train + Test Data ---")
 merged_df = pd.concat([train_df, test_df], ignore_index=True)
 merged_df = merged_df.dropna().reset_index(drop=True)
 
-train_data_c2, valid_data_c2 = train_test_split(merged_df, test_size=100, random_state=42, shuffle=True)
+train_data_c2, valid_data_c2 = train_test_split(merged_df, test_size=300, random_state=42, shuffle=True)
 
 print("Train shape:", train_data_c2.shape)
 print("Validation shape:", valid_data_c2.shape)
