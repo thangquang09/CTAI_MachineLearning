@@ -221,7 +221,7 @@ def train(model_class, embedding_model, train_df, valid_df, train_pair_df, valid
     return model, results
 
 
-def create_submission(model, embedding_model, test_df, case, results):
+def create_submission(model, embedding_model, embedding_model_name, test_df, case, results):
     """Create submission file with model info."""
     print("\n📤 Making predictions on test set...")
     y_preds_submission = eval_text_pair(
@@ -234,8 +234,7 @@ def create_submission(model, embedding_model, test_df, case, results):
 
     # Create informative filename
     model_name = results['model_name']
-    score = results['valid_pair_accuracy']
-    submission_filename = f"submission_case{case}_{model_name}_score{score:.4f}.csv"
+    submission_filename = f"submission_case{case}_{model_name}_{embedding_model_name}.csv"
     
     submission.to_csv(submission_filename, index=False)
     print(f"✅ Submission saved to: {submission_filename}")
@@ -250,8 +249,8 @@ if __name__ == "__main__":
     merge_option = True
     
     # 🎯 CHỌN MODEL
-    model_class = RandomForestClassifier      # 🌲 Random Forest
-    # model_class = LogisticRegression        # 📈 Logistic Regression  
+    # model_class = RandomForestClassifier      # 🌲 Random Forest
+    model_class = LogisticRegression        # 📈 Logistic Regression  
     # model_class = CatBoostClassifier        # 🚀 CatBoost
     
     print(f"🚀 Starting training pipeline with {get_model_config(model_class)['model_name']}")
@@ -285,7 +284,8 @@ if __name__ == "__main__":
     print(f"📏 Train samples: {len(train_textclf_df)}, Valid samples: {len(valid_textclf_df)}")
 
     # Initialize embedding model
-    embedding_model = SentenceTransformer("intfloat/multilingual-e5-small")
+    embedding_model_name = "sentence-transformers/all-mpnet-base-v2"
+    embedding_model = SentenceTransformer(embedding_model_name)
     print(f"🤖 Using embedding model: {embedding_model}")
 
     # === TRAINING ===
@@ -294,8 +294,8 @@ if __name__ == "__main__":
     )
 
     # === SUBMISSION ===
-    submission_filename = create_submission(trained_model, embedding_model, test_df, case, results)
-    
+    submission_filename = create_submission(trained_model, embedding_model, embedding_model_name, test_df, case, results)
+
     # === SUMMARY ===
     print("\n" + "="*60)
     print(f"🎉 TRAINING COMPLETED - {results['model_name']}")
