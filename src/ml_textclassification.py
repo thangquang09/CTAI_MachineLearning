@@ -234,8 +234,9 @@ def create_submission(model, embedding_model, embedding_model_name, test_df, cas
 
     # Create informative filename
     model_name = results['model_name']
-    submission_filename = f"submission_case{case}_{model_name}_{embedding_model_name}.csv"
-    
+    normalized_model_name = model_name.split('/')[-1].replace(" ", "").replace("-", "_")
+    submission_filename = f"submission_case{case}_{normalized_model_name}_{embedding_model_name}.csv"
+
     submission.to_csv(submission_filename, index=False)
     print(f"✅ Submission saved to: {submission_filename}")
     
