@@ -190,9 +190,21 @@ def train(model_class, embedding_model, train_df, valid_df, train_pair_df, valid
         # Ensure random_state, verbose, and thread_count are set
         best_params.update({'random_state': 42, 'verbose': 0, 'thread_count': -1})
     elif model_class == LogisticRegression:
-        # Convert penalty "none" to None if needed
+        # Convert penalty "none" to None if needed (Optuna returns string "none", not None)
         if best_params.get('penalty') == 'none':
             best_params['penalty'] = None
+        
+        # Handle solver-penalty compatibility (same logic as in lr_objective)
+        penalty = best_params.get('penalty')
+        solver = best_params.get('solver')
+        
+        if solver == "liblinear" and penalty in ["elasticnet", None]:
+            best_params['penalty'] = "l2"  # liblinear only supports l1, l2
+        if solver == "lbfgs" and penalty in ["l1", "elasticnet"]:
+            best_params['penalty'] = "l2"  # lbfgs doesn't support l1, elasticnet
+        if penalty == "elasticnet":
+            best_params['solver'] = "saga"  # only saga supports elasticnet
+            
         # Ensure random_state and max_iter are set
         best_params.update({'random_state': 42, 'max_iter': 10000})
     
@@ -287,8 +299,8 @@ if __name__ == "__main__":
     
     # 🎯 CHỌN MODEL
     # model_class = RandomForestClassifier      # 🌲 Random Forest
-    model_class = LogisticRegression        # 📈 Logistic Regression  
-    # model_class = CatBoostClassifier        # 🚀 CatBoost
+    # model_class = LogisticRegression        # 📈 Logistic Regression  
+    model_class = CatBoostClassifier        # 🚀 CatBoost
     
     print(f"🚀 Starting training pipeline with {get_model_config(model_class)['model_name']}")
     
