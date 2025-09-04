@@ -238,7 +238,7 @@ def train(model_class, embedding_model, train_df, valid_df, train_pair_df, valid
     return model, results
 
 
-def create_submission(model, embedding_model, test_df, case, results):
+def create_submission(model, embedding_model, test_df, case, results, embedding_model_path):
     """Create submission file with model info."""
     print("\n📤 Making predictions on test set...")
     y_preds_submission = eval_text_pair(
@@ -252,22 +252,16 @@ def create_submission(model, embedding_model, test_df, case, results):
     # Create filename with model and embedding names
     model_name = results['model_name']
     
-    # Get embedding model name and normalize it
-    try:
-        # Try to get the model name from the config
-        if hasattr(embedding_model, '_modules') and hasattr(embedding_model._modules['0'], 'auto_model'):
-            embedding_model_path = embedding_model._modules['0'].auto_model.config.name_or_path
-        elif hasattr(embedding_model, 'model_name'):
-            embedding_model_path = embedding_model.model_name
-        else:
-            # Fallback to default name
-            embedding_model_path = "intfloat/multilingual-e5-small"
-    except Exception:
-        # If all fails, use default
-        embedding_model_path = "multilingual_e5_small"
+    # Use the provided embedding_model_path directly
+    # Get last part after '/' and normalize for local paths or HuggingFace names
+    if embedding_model_path.startswith("/") or embedding_model_path.startswith("./"):
+        # Local path - lấy tên folder cuối cùng
+        embedding_name = embedding_model_path.rstrip("/").split("/")[-1]
+    else:
+        # HuggingFace model name - lấy phần sau dấu /
+        embedding_name = embedding_model_path.split("/")[-1]
     
-    # Get last part after '/' and normalize
-    embedding_name = embedding_model_path.split('/')[-1]
+    # Normalize embedding name
     safe_embedding_name = embedding_name.replace("-", "_").replace(".", "_").replace(" ", "")
     
     # Normalize model name
@@ -288,19 +282,22 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
     parser.add_argument(
-        "--embedding_model", type=str, default="all-MiniLM-L6-v2", help="Embedding Model Name"
+        "--embedding_model", 
+        type=str, 
+        default="intfloat/multilingual-e5-small", 
+        help="Embedding model name (HuggingFace) or path to fine-tuned model"
     )
 
     args = parser.parse_args()
 
     case = args.case
-    base_model_name = args.embedding_model
-    merge_option = True
+    embedding_model_path = args.embedding_model
+    merge_option = False
     
     # 🎯 CHỌN MODEL
     # model_class = RandomForestClassifier      # 🌲 Random Forest
-    # model_class = LogisticRegression        # 📈 Logistic Regression  
-    model_class = CatBoostClassifier        # 🚀 CatBoost
+    model_class = LogisticRegression        # 📈 Logistic Regression  
+    # model_class = CatBoostClassifier        # 🚀 CatBoost
     
     print(f"🚀 Starting training pipeline with {get_model_config(model_class)['model_name']}")
     
@@ -333,8 +330,9 @@ if __name__ == "__main__":
     print(f"📏 Train samples: {len(train_textclf_df)}, Valid samples: {len(valid_textclf_df)}")
 
     # Initialize embedding model
-    embedding_model = SentenceTransformer(base_model_name)
-    print(f"🤖 Using embedding model: {embedding_model}")
+    print(f"🤖 Loading embedding model: {embedding_model_path}")
+    embedding_model = SentenceTransformer(embedding_model_path)
+    print("✅ Successfully loaded embedding model")
 
     # === TRAINING ===
     trained_model, results = train(
@@ -342,7 +340,9 @@ if __name__ == "__main__":
     )
 
     # === SUBMISSION ===
-    submission_filename = create_submission(trained_model, embedding_model, test_df, case, results)
+    submission_filename = create_submission(
+        trained_model, embedding_model, test_df, case, results, embedding_model_path
+    )
 
     # === SUMMARY ===
     print("\n" + "="*60)
