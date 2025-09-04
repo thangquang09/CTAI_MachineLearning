@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 from datasets import load_dataset
-from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
@@ -69,6 +68,9 @@ class TextPairDataset(Dataset):
         text1 = str(self.texts1[idx])
         text2 = str(self.texts2[idx])
         label = self.labels[idx]
+        
+        # Chuyển đổi label từ {1, 2} thành {0, 1} cho BCE loss
+        label = label - 1  # 1->0, 2->1
 
         # Tokenize từng văn bản
         encoding_A = self.tokenizer(
@@ -100,7 +102,7 @@ class TextPairDataset(Dataset):
         return item
 
 
-def evaluate(model, valid_dataloader, criterion, device):
+def evaluate(model, valid_dataloader, device):
     model.eval()
     total_loss = 0
     running_correct = 0
@@ -132,7 +134,6 @@ def train_model(
     max_epoch,
     train_dataloader,
     valid_dataloader,
-    criterion,
     optimizer,
     scheduler,
     device,
@@ -178,7 +179,7 @@ def train_model(
         epoch_accuracy = 100 * running_correct / total
         epoch_loss = running_loss / len(train_dataloader)
 
-        test_loss, test_accuracy = evaluate(model, valid_dataloader, criterion, device)
+        test_loss, test_accuracy = evaluate(model, valid_dataloader, device)
 
         if test_loss < best_test_loss:
             best_test_loss = test_loss
@@ -262,7 +263,8 @@ if __name__ == "__main__":
     copy_train_df["file_1"] = f2
     copy_train_df["file_2"] = f1
 
-    # Đảo nhãn
+    # Đảo nhãn (vì labels sẽ được chuyển từ {1,2} thành {0,1} trong __getitem__)
+    # Nên ta đảo từ {1,2} thành {2,1}
     copy_train_df["label"] = copy_train_df["label"].map({1: 2, 2: 1})
 
     # Ghép vào
@@ -286,8 +288,7 @@ if __name__ == "__main__":
     device = torch.device(PretrainedModelConfig.DEVICE)
     model.to(device)
 
-    # Loss and optimizer
-    criterion = nn.BCEWithLogitsLoss()
+    # Optimizer (không cần criterion vì model đã tính loss internal)
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=PretrainedModelConfig.LEARNING_RATE,
@@ -302,7 +303,6 @@ if __name__ == "__main__":
         PretrainedModelConfig.NUM_EPOCHS,
         train_loader,
         valid_loader,
-        criterion,
         optimizer,
         scheduler,
         device,
