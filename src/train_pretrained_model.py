@@ -6,6 +6,7 @@ import argparse
 from datetime import datetime
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import torch
 from datasets import load_dataset
@@ -282,6 +283,10 @@ if __name__ == "__main__":
     )
 
     print(f"Train size: {len(train_dataset)} | Valid size: {len(valid_dataset)}")
+    # Display label distribution
+    print("\n📊 Dataset Label Distribution:")
+    print(f"Train labels - Class 1: {(train_df['label'] == 1).sum()} | Class 2: {(train_df['label'] == 2).sum()}")
+    print(f"Valid labels - Class 1: {(valid_df['label'] == 1).sum()} | Class 2: {(valid_df['label'] == 2).sum()}")
 
     # Initialize model
     model = SiamesePretrainedModel(PretrainedModelConfig.MODEL_NAME)
@@ -327,3 +332,58 @@ if __name__ == "__main__":
         print(f"\nModel with best validation loss saved to: {model_save_path}")
     else:
         print("\nTraining completed, but no best model was saved.")
+
+    # === MAKE SUBMISSION ===
+    if best_weights:
+        print("\n📤 Making predictions on test set...")
+        
+        # Load best model
+        model.load_state_dict(best_weights)
+        model.eval()
+        
+        # Create test dataset (test_df was already preprocessed above)
+        test_dataset = TextPairDataset(test_df, tokenizer, PretrainedModelConfig.MAX_LEN)
+        test_loader = DataLoader(
+            test_dataset, batch_size=PretrainedModelConfig.BATCH_SIZE, shuffle=False
+        )
+        
+        # Predict on test set
+        predictions = []
+        with torch.no_grad():
+            for batch in test_loader:
+                input_ids_A = batch["input_ids_A"].to(device)
+                attention_mask_A = batch["attention_mask_A"].to(device)
+                input_ids_B = batch["input_ids_B"].to(device)
+                attention_mask_B = batch["attention_mask_B"].to(device)
+                
+                # Forward pass without labels (inference mode)
+                _, logits = model(input_ids_A, attention_mask_A, input_ids_B, attention_mask_B)
+                
+                # Convert logits to probabilities and then to predictions
+                probs = torch.sigmoid(logits.squeeze(1))
+                pred_labels = (probs > 0.5).float()
+                
+                # Convert back to {1, 2} format for submission
+                pred_labels = pred_labels + 1  # {0, 1} -> {1, 2}
+                predictions.extend(pred_labels.cpu().numpy())
+        
+        # Create submission DataFrame
+        submission = pd.DataFrame({
+            "id": test_df.index,
+            "real_text_id": np.array(predictions).astype(int)
+        }).sort_values("id")
+        
+        # Create submission filename
+        model_name = "SiamesePretrainedModel"
+        safe_model_name = PretrainedModelConfig.MODEL_NAME.replace("/", "_").replace("-", "_")
+        submission_filename = f"submission_case{case}_{model_name}_{safe_model_name}.csv"
+        
+        # Save submission
+        submission.to_csv(submission_filename, index=False)
+        print(f"✅ Submission saved to: {submission_filename}")
+        print(f"📊 Test predictions: {len(predictions)} samples")
+        print(f"📊 Prediction distribution: Class 1: {(np.array(predictions) == 1).sum()}, Class 2: {(np.array(predictions) == 2).sum()}")
+    else:
+        print("\n❌ Cannot make submission: no trained model available.")
+        
+    print("\n🎉 Training and submission completed!")

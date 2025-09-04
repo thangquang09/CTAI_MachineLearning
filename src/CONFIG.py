@@ -16,7 +16,7 @@ class PretrainedModelConfig:
     MODEL_NAME = 'microsoft/deberta-v3-base'
     MAX_LEN = 512
     BATCH_SIZE = 4
-    NUM_EPOCHS = 5
+    NUM_EPOCHS = 10
     LEARNING_RATE = 2e-5
     WEIGHT_DECAY = 1e-2
     WARMUP_STEPS = 0
