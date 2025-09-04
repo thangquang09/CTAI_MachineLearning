@@ -169,11 +169,9 @@ def train_model(
     best_weights = None
     best_test_loss = float("inf")
     epochs_no_improve = 0
-    
-    # Get gradient accumulation steps from config
-    accumulation_steps = getattr(PretrainedModelConfig, 'GRADIENT_ACCUMULATION_STEPS', 1)
-    print(f"📊 Gradient accumulation steps: {accumulation_steps}")
-    print(f"📊 Effective batch size: {PretrainedModelConfig.BATCH_SIZE * accumulation_steps}")
+
+    # Simple training without gradient accumulation to avoid conflicts
+    print("📊 Using simple training loop without gradient accumulation")
 
     for epoch in range(max_epoch):
         model.train()
@@ -181,40 +179,26 @@ def train_model(
         all_predictions = []
         all_labels = []
         epoch_start_time = time.time()
-        
-        # Zero gradients at the beginning of each epoch
-        optimizer.zero_grad()
 
         for i, batch in enumerate(train_dataloader):
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
 
+            optimizer.zero_grad()
             loss, logits = model(input_ids, attention_mask, labels)
             
             # Handle DataParallel loss (average across GPUs)
             if torch.cuda.device_count() > 1:
-                loss = loss.mean()  # DataParallel returns loss for each GPU
+                loss = loss.mean()
             
-            # Scale loss for gradient accumulation
-            loss = loss / accumulation_steps
-            
-            running_loss += loss.item() * accumulation_steps
+            running_loss += loss.item()
             predicted = torch.argmax(logits, dim=1)
             all_predictions.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             
             loss.backward()
-            
-            # Only step optimizer every accumulation_steps
-            if (i + 1) % accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
-
-        # Handle remaining gradients if batch doesn't divide evenly
-        if (len(train_dataloader) % accumulation_steps) != 0:
             optimizer.step()
-            optimizer.zero_grad()
 
         epoch_accuracy = accuracy_score(all_labels, all_predictions) * 100
         epoch_loss = running_loss / len(train_dataloader)
@@ -393,6 +377,10 @@ if __name__ == "__main__":
     train_dataset = TextClassificationDataset(train_textclf_df, tokenizer, PretrainedModelConfig.MAX_LEN)
     valid_dataset = TextClassificationDataset(valid_textclf_df, tokenizer, PretrainedModelConfig.MAX_LEN)
     
+    # Use effective batch size from config
+    effective_batch_size = getattr(PretrainedModelConfig, 'GRADIENT_ACCUMULATION_STEPS', 1) * PretrainedModelConfig.BATCH_SIZE
+    print(f"📊 Target effective batch size: {effective_batch_size}")
+    
     train_loader = DataLoader(
         train_dataset, batch_size=PretrainedModelConfig.BATCH_SIZE, shuffle=True
     )
@@ -406,12 +394,8 @@ if __name__ == "__main__":
     print("🤖 Initializing TextClassificationPretrainedModel...")
     model = TextClassificationPretrainedModel(PretrainedModelConfig.MODEL_NAME, num_labels=2)
     
-    # Enable gradient checkpointing for memory saving (disable if causing issues)
-    # Note: Gradient checkpointing might conflict with DataParallel + gradient accumulation
-    if hasattr(model.backbone, 'gradient_checkpointing_enable'):
-        # Temporarily disable gradient checkpointing to avoid backward graph conflicts
-        # model.backbone.gradient_checkpointing_enable()
-        print("⚠️ Gradient checkpointing disabled to avoid conflicts")
+    # Skip gradient checkpointing to avoid conflicts
+    print("⚠️ Skipping gradient checkpointing to avoid backward graph conflicts")
     
     device = torch.device(PretrainedModelConfig.DEVICE)
     model.to(device)
