@@ -364,26 +364,6 @@ if __name__ == "__main__":
         use_early_stopping=True,
     )
 
-    # === EVALUATION ON PAIR CLASSIFICATION DURING TRAINING ===
-    if best_weights:
-        print("\n📊 Evaluating pair classification performance...")
-        
-        # Load best model
-        model.load_state_dict(best_weights)
-        model.eval()
-        
-        # Evaluate on train pairs
-        train_pair_accuracy = eval_text_pair(
-            model, tokenizer, train_df, device, PretrainedModelConfig.MAX_LEN
-        )
-        print(f"🎯 Train Pair Accuracy: {train_pair_accuracy:.4f}")
-        
-        # Evaluate on validation pairs
-        valid_pair_accuracy = eval_text_pair(
-            model, tokenizer, valid_df, device, PretrainedModelConfig.MAX_LEN
-        )
-        print(f"🎯 Validation Pair Accuracy: {valid_pair_accuracy:.4f}")
-
     # Save best model
     if best_weights:
         os.makedirs("models", exist_ok=True)
@@ -432,11 +412,29 @@ if __name__ == "__main__":
 
     print(f"Plots saved to: {plot_path}")
 
-    # === MAKE SUBMISSION ===
+    # === EVALUATION ON PAIR CLASSIFICATION ===
     if best_weights:
-        print("\n� Making predictions on test set...")
+        print("\n📊 Evaluating pair classification performance...")
         
-        # Model đã được load best weights ở trên rồi, không cần load lại
+        # Load best model
+        model.load_state_dict(best_weights)
+        model.eval()
+        
+        # Evaluate on train pairs
+        train_pair_accuracy = eval_text_pair(
+            model, tokenizer, train_df, device, PretrainedModelConfig.MAX_LEN
+        )
+        print(f"🎯 Train Pair Accuracy: {train_pair_accuracy:.4f}")
+        
+        # Evaluate on validation pairs
+        valid_pair_accuracy = eval_text_pair(
+            model, tokenizer, valid_df, device, PretrainedModelConfig.MAX_LEN
+        )
+        print(f"🎯 Validation Pair Accuracy: {valid_pair_accuracy:.4f}")
+
+        # === MAKE SUBMISSION ===
+        print("\n📤 Making predictions on test set...")
+        
         # Predict on test set
         predictions = eval_text_pair(
             model, tokenizer, test_df, device, PretrainedModelConfig.MAX_LEN, make_submission=True
@@ -469,6 +467,6 @@ if __name__ == "__main__":
         print(f"📤 Submission: {submission_filename}")
         print("="*60)
     else:
-        print("\n❌ Cannot make submission: no trained model available.")
+        print("\n❌ Cannot evaluate pairs or make submission: no trained model available.")
         
     print("\n🎉 Training and submission completed!")
