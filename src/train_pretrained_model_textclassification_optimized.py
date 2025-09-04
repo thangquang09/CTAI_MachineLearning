@@ -335,6 +335,10 @@ if __name__ == "__main__":
     # === MEMORY OPTIMIZATION SETUP ===
     print("🔧 Setting up memory optimization...")
     
+    # Suppress DataParallel scalar gathering warning
+    import warnings
+    warnings.filterwarnings("ignore", message="Was asked to gather along dimension 0")
+    
     # Enable memory efficient attention if available
     try:
         torch.backends.cuda.enable_flash_sdp(True)
