@@ -19,6 +19,53 @@ from CONFIG import PretrainedModelConfig
 from pretrained_model import CrossEncoder
 
 
+def smart_tokenize_pair(tokenizer, text1, text2, max_length):
+    """
+    Smart tokenization cho text pairs với balanced truncation
+    Đảm bảo cả 2 texts đều có thông tin thay vì truncate longest first
+    """
+    # Reserve tokens cho special tokens: [CLS] + [SEP] + [SEP] = 3 tokens
+    special_tokens_count = 3
+    available_length = max_length - special_tokens_count
+    
+    # Equal split strategy: chia đều space cho 2 texts  
+    max_len_per_text = available_length // 2
+    
+    # Tokenize từng text riêng với giới hạn balanced
+    tokens1 = tokenizer.encode(
+        text1, 
+        add_special_tokens=False, 
+        truncation=True, 
+        max_length=max_len_per_text
+    )
+    tokens2 = tokenizer.encode(
+        text2, 
+        add_special_tokens=False, 
+        truncation=True, 
+        max_length=max_len_per_text  
+    )
+    
+    # Tạo sequence với special tokens: [CLS] + text1 + [SEP] + text2 + [SEP]
+    cls_token = tokenizer.cls_token_id
+    sep_token = tokenizer.sep_token_id
+    
+    input_ids = [cls_token] + tokens1 + [sep_token] + tokens2 + [sep_token]
+    
+    # Tạo attention mask
+    attention_mask = [1] * len(input_ids)
+    
+    # Padding đến max_length
+    padding_length = max_length - len(input_ids)
+    if padding_length > 0:
+        input_ids.extend([tokenizer.pad_token_id] * padding_length)
+        attention_mask.extend([0] * padding_length)
+    
+    return {
+        'input_ids': input_ids,
+        'attention_mask': attention_mask
+    }
+
+
 def preprocessing(text: str) -> str:
     text = text.replace("\n", " ")
 
@@ -73,21 +120,12 @@ class CrossEncoderDataset(Dataset):
         # Chuyển đổi label từ {1, 2} thành {0, 1} cho BCE loss
         label = label - 1  # 1->0, 2->1
 
-        # 🔗 CrossEncoder: concat 2 texts với tokenizer tự động thêm [SEP]
-        # Format: [CLS] text1 [SEP] text2 [SEP] [PAD]...
-        encoding = self.tokenizer(
-            text1,
-            text2,  # text_pair sẽ tự động thêm [SEP] giữa 2 texts
-            add_special_tokens=True,
-            truncation=True,
-            max_length=self.max_len,
-            padding="max_length",
-            return_tensors="pt",
-        )
+        # 🧠 Smart tokenization: Balanced truncation cho 2 texts
+        encoding = smart_tokenize_pair(self.tokenizer, text1, text2, self.max_len)
 
         item = {
-            "input_ids": encoding["input_ids"].flatten(),
-            "attention_mask": encoding["attention_mask"].flatten(),
+            "input_ids": torch.tensor(encoding["input_ids"], dtype=torch.long),
+            "attention_mask": torch.tensor(encoding["attention_mask"], dtype=torch.long),
             "labels": torch.tensor(label, dtype=torch.float),  # BCE loss cần float
         }
 
@@ -257,6 +295,14 @@ if __name__ == "__main__":
     # Suppress DataParallel scalar gathering warning
     import warnings
     warnings.filterwarnings("ignore", message="Was asked to gather along dimension 0")
+    
+    # Suppress tokenizer truncation warnings  
+    warnings.filterwarnings("ignore", message="Be aware, overflowing tokens are not returned")
+    warnings.filterwarnings("ignore", message="overflowing tokens are not returned")
+    
+    # Set transformers logging to error only
+    from transformers import logging as transformers_logging
+    transformers_logging.set_verbosity_error()
     
     # Enable memory efficient attention if available
     try:
