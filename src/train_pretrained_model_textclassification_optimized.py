@@ -364,12 +364,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
     parser.add_argument("--model", type=str, default=None, help="Model name to use (overrides config)")
+    parser.add_argument("--batchsize", type=int, default=None, help="Batch size for training (overrides config)")
     args = parser.parse_args()
     case = args.case
     
     # Use specified model or default from config
     model_name = args.model if args.model else PretrainedModelConfig.MODEL_NAME
     print(f"🤖 Using model: {model_name}")
+    
+    # Use specified batch size or default from config
+    batch_size = args.batchsize if args.batchsize else PretrainedModelConfig.BATCH_SIZE
+    print(f"📦 Using batch size: {batch_size}")
 
     print("\n📊 Loading dataset...")
     dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
@@ -403,10 +408,10 @@ if __name__ == "__main__":
     valid_dataset = TextClassificationDataset(valid_textclf_df, tokenizer, PretrainedModelConfig.MAX_LEN)
     
     train_loader = DataLoader(
-        train_dataset, batch_size=PretrainedModelConfig.BATCH_SIZE, shuffle=True
+        train_dataset, batch_size=batch_size, shuffle=True
     )
     valid_loader = DataLoader(
-        valid_dataset, batch_size=PretrainedModelConfig.BATCH_SIZE, shuffle=False
+        valid_dataset, batch_size=batch_size, shuffle=False
     )
 
     print(f"Train size: {len(train_dataset)} | Valid size: {len(valid_dataset)}")
