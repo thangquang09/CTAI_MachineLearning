@@ -357,21 +357,22 @@ if __name__ == "__main__":
     test_df["file_1"] = test_df["file_1"].apply(preprocessing)
     test_df["file_2"] = test_df["file_2"].apply(preprocessing)
 
-    print("Data Augmentation...")
-    copy_train_df = train_df.copy()
+    if PretrainedModelConfig.AUGMENT:
+        print("Data Augmentation...")
+        copy_train_df = train_df.copy()
 
-    # Hoán đổi texts
-    f1 = copy_train_df["file_1"].copy()
-    f2 = copy_train_df["file_2"].copy()
-    copy_train_df["file_1"] = f2
-    copy_train_df["file_2"] = f1
+        # Hoán đổi texts
+        f1 = copy_train_df["file_1"].copy()
+        f2 = copy_train_df["file_2"].copy()
+        copy_train_df["file_1"] = f2
+        copy_train_df["file_2"] = f1
 
-    # Đảo nhãn (vì labels sẽ được chuyển từ {1,2} thành {0,1} trong __getitem__)
-    copy_train_df["label"] = copy_train_df["label"].map({1: 2, 2: 1})
+        # Đảo nhãn (vì labels sẽ được chuyển từ {1,2} thành {0,1} trong __getitem__)
+        copy_train_df["label"] = copy_train_df["label"].map({1: 2, 2: 1})
 
-    # Ghép vào
-    train_df = pd.concat([train_df, copy_train_df], ignore_index=True)
-    train_df = train_df.sample(frac=1, random_state=42).reset_index(drop=True)
+        # Ghép vào
+        train_df = pd.concat([train_df, copy_train_df], ignore_index=True)
+        train_df = train_df.sample(frac=1, random_state=42).reset_index(drop=True)
 
     train_dataset = CrossEncoderDataset(train_df, tokenizer, PretrainedModelConfig.MAX_LEN)
     valid_dataset = CrossEncoderDataset(valid_df, tokenizer, PretrainedModelConfig.MAX_LEN)

@@ -25,3 +25,4 @@ class PretrainedModelConfig:
     EARLY_STOPPING_DELTA = 0.01
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     RANDOM_SEED = 42
+    AUGMENT = False
