@@ -83,27 +83,32 @@ class TextClassificationPretrainedModel(nn.Module):
         self.backbone = AutoModel.from_pretrained(model_name)
         hidden_size = self.backbone.config.hidden_size
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            # Initial normalization
             nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(0.1),
             
-            nn.Linear(hidden_size, hidden_size),
-            nn.LayerNorm(hidden_size),
-            nn.GELU(),
-            nn.Dropout(0.2),
+            # Multiple residual blocks
+            ResidualBlock(hidden_size, dropout=0.1),
+            ResidualBlock(hidden_size, dropout=0.1),
+            ResidualBlock(hidden_size, dropout=0.2),
+            ResidualBlock(hidden_size, dropout=0.2),
             
+            # Gradual compression
             nn.Linear(hidden_size, hidden_size // 2),
             nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
-            nn.Dropout(0.2),
+            nn.Dropout(0.1),
             
             nn.Linear(hidden_size // 2, hidden_size // 4),
             nn.LayerNorm(hidden_size // 4),
             nn.GELU(),
             nn.Dropout(0.1),
             
-            nn.Linear(hidden_size // 4, num_labels)
+            nn.Linear(hidden_size // 4, hidden_size // 8),
+            nn.LayerNorm(hidden_size // 8),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(hidden_size // 8, num_labels)
         )
 
     def forward(self, input_ids, attention_mask, labels=None):
