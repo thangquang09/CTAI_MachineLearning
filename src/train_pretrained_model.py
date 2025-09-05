@@ -3,6 +3,7 @@ import string
 import os
 import time
 import argparse
+import gc
 from datetime import datetime
 
 import matplotlib.pyplot as plt
@@ -119,6 +120,11 @@ def evaluate(model, valid_dataloader, device):
             loss, logits = model(
                 input_ids_A, attention_mask_A, input_ids_B, attention_mask_B, labels
             )
+            
+            # Handle DataParallel loss (average across GPUs)
+            if torch.cuda.device_count() > 1:
+                loss = loss.mean()
+            
             total_loss += loss.item()
 
             predicted = (torch.sigmoid(logits.squeeze(1)) > 0.5).float()
@@ -141,6 +147,13 @@ def train_model(
     early_stopping_patience=None,
     use_early_stopping=True,
 ):
+    # Enable multi-GPU if available
+    if torch.cuda.device_count() > 1:
+        print(f"🚀 Using {torch.cuda.device_count()} GPUs for training!")
+        model = torch.nn.DataParallel(model)
+    else:
+        print(f"🔧 Using single GPU: {device}")
+    
     train_losses = []
     train_accuracies = []
     test_losses = []
@@ -149,6 +162,11 @@ def train_model(
     best_weights = None
     best_test_loss = float("inf")
     epochs_no_improve = 0
+    
+    # Get gradient accumulation steps from config
+    accumulation_steps = getattr(PretrainedModelConfig, 'GRADIENT_ACCUMULATION_STEPS', 1)
+    print(f"📊 Gradient accumulation steps: {accumulation_steps}")
+    print(f"📊 Effective batch size: {PretrainedModelConfig.BATCH_SIZE * accumulation_steps}")
 
     for epoch in range(max_epoch):
         model.train()
@@ -156,6 +174,9 @@ def train_model(
         running_correct = 0
         total = 0
         epoch_start_time = time.time()
+        
+        # Zero gradients at the beginning of each epoch
+        optimizer.zero_grad()
 
         for i, batch in enumerate(train_dataloader):
             input_ids_A = batch["input_ids_A"].to(device)
@@ -164,18 +185,33 @@ def train_model(
             attention_mask_B = batch["attention_mask_B"].to(device)
             labels = batch["labels"].to(device)
 
-            optimizer.zero_grad()
             loss, logits = model(
                 input_ids_A, attention_mask_A, input_ids_B, attention_mask_B, labels
             )
+            
+            # Handle DataParallel loss (average across GPUs)
+            if torch.cuda.device_count() > 1:
+                loss = loss.mean()
+            
+            # Scale loss for gradient accumulation
+            loss = loss / accumulation_steps
 
-            running_loss += loss.item()
+            running_loss += loss.item() * accumulation_steps
             predicted = (torch.sigmoid(logits.squeeze(1)) > 0.5).float()
             total += labels.size(0)
             running_correct += (predicted == labels).sum().item()
 
             loss.backward()
+            
+            # Only step optimizer every accumulation_steps
+            if (i + 1) % accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+
+        # Handle remaining gradients if batch doesn't divide evenly
+        if (len(train_dataloader) % accumulation_steps) != 0:
             optimizer.step()
+            optimizer.zero_grad()
 
         epoch_accuracy = 100 * running_correct / total
         epoch_loss = running_loss / len(train_dataloader)
@@ -184,7 +220,11 @@ def train_model(
 
         if test_loss < best_test_loss:
             best_test_loss = test_loss
-            best_weights = model.state_dict()
+            # Handle DataParallel model state dict
+            if torch.cuda.device_count() > 1:
+                best_weights = model.module.state_dict()
+            else:
+                best_weights = model.state_dict()
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -229,6 +269,35 @@ def train_model(
 
 
 if __name__ == "__main__":
+    # === MEMORY OPTIMIZATION SETUP ===
+    print("🔧 Setting up memory optimization...")
+    
+    # Suppress DataParallel scalar gathering warning
+    import warnings
+    warnings.filterwarnings("ignore", message="Was asked to gather along dimension 0")
+    
+    # Enable memory efficient attention if available
+    try:
+        torch.backends.cuda.enable_flash_sdp(True)
+        print("✅ Flash Attention enabled")
+    except Exception:
+        print("⚠️ Flash Attention not available")
+    
+    # Set memory allocation strategy
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+    
+    # Clear GPU cache
+    torch.cuda.empty_cache()
+    gc.collect()
+    
+    # Print GPU information
+    if torch.cuda.is_available():
+        print(f"🔍 Available GPUs: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            gpu_name = torch.cuda.get_device_name(i)
+            gpu_memory = torch.cuda.get_device_properties(i).total_memory / 1024**3
+            print(f"   GPU {i}: {gpu_name} ({gpu_memory:.1f} GB)")
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
     args = parser.parse_args()
@@ -274,7 +343,7 @@ if __name__ == "__main__":
 
     train_dataset = TextPairDataset(train_df, tokenizer, PretrainedModelConfig.MAX_LEN)
     valid_dataset = TextPairDataset(valid_df, tokenizer, PretrainedModelConfig.MAX_LEN)
-    # TODO: test_dataset = TextPairDataset(test_df, tokenizer, PretrainedModelConfig.MAX_LEN)
+    
     train_loader = DataLoader(
         train_dataset, batch_size=PretrainedModelConfig.BATCH_SIZE, shuffle=True
     )
@@ -289,7 +358,13 @@ if __name__ == "__main__":
     print(f"Valid labels - Class 1: {(valid_df['label'] == 1).sum()} | Class 2: {(valid_df['label'] == 2).sum()}")
 
     # Initialize model
+    print("🤖 Initializing SiamesePretrainedModel...")
     model = SiamesePretrainedModel(PretrainedModelConfig.MODEL_NAME)
+    
+    # Disable gradient checkpointing to avoid conflicts with DataParallel + gradient accumulation
+    if hasattr(model.backbone, 'gradient_checkpointing_enable'):
+        print("⚠️ Gradient checkpointing disabled to avoid conflicts")
+    
     device = torch.device(PretrainedModelConfig.DEVICE)
     model.to(device)
 
@@ -319,11 +394,7 @@ if __name__ == "__main__":
     if best_weights:
         os.makedirs("models", exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_name = (
-            model._get_name()
-            if hasattr(model, "_get_name")
-            else "SiamesePretrainedModel"
-        )
+        model_name = "SiamesePretrainedModel"
         model_save_path = os.path.join(
             "models", f"{model_name}_case{case}_{timestamp}.pth"
         )
@@ -333,11 +404,48 @@ if __name__ == "__main__":
     else:
         print("\nTraining completed, but no best model was saved.")
 
+    # Create plots
+    os.makedirs("plots", exist_ok=True)
+
+    plt.figure(figsize=(15, 6))
+
+    # Plot training and validation loss
+    plt.subplot(1, 2, 1)
+    plt.plot(history["train_losses"], label="Training Loss")
+    plt.plot(history["test_losses"], label="Validation Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.title("Training and Validation Loss")
+    plt.legend()
+    plt.grid(True)
+
+    # Plot training and validation accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(history["train_accuracies"], label="Training Accuracy")
+    plt.plot(history["test_accuracies"], label="Validation Accuracy")
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy (%)")
+    plt.title("Training and Validation Accuracy")
+    plt.legend()
+    plt.grid(True)
+
+    plt.tight_layout()
+
+    timestamp_plot = datetime.now().strftime("%Y%m%d_%H%M%S")
+    plot_path = os.path.join("plots", f"siamese_pretrained_loss_accuracy_case{case}_{timestamp_plot}.png")
+    plt.savefig(plot_path)
+    plt.close()
+
+    print(f"Plots saved to: {plot_path}")
+
     # === MAKE SUBMISSION ===
     if best_weights:
         print("\n📤 Making predictions on test set...")
         
-        # Load best model
+        # Load best model (handle DataParallel wrapper)
+        if hasattr(model, 'module'):
+            # Remove DataParallel wrapper for evaluation
+            model = model.module
         model.load_state_dict(best_weights)
         model.eval()
         
@@ -383,6 +491,14 @@ if __name__ == "__main__":
         print(f"✅ Submission saved to: {submission_filename}")
         print(f"📊 Test predictions: {len(predictions)} samples")
         print(f"📊 Prediction distribution: Class 1: {(np.array(predictions) == 1).sum()}, Class 2: {(np.array(predictions) == 2).sum()}")
+        
+        # === SUMMARY ===
+        print("\n" + "="*60)
+        print("🎉 TRAINING COMPLETED - SiamesePretrainedModel")
+        print("="*60)
+        print(f"📊 Final Siamese Accuracy: {history['test_accuracies'][-1]:.2f}%")
+        print(f"📤 Submission: {submission_filename}")
+        print("="*60)
     else:
         print("\n❌ Cannot make submission: no trained model available.")
         
