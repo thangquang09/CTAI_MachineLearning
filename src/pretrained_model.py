@@ -41,8 +41,8 @@ class SiamesePretrainedModel(nn.Module):
             # Multiple residual blocks
             ResidualBlock(hidden_size, dropout=0.3),
             ResidualBlock(hidden_size, dropout=0.3),
-            ResidualBlock(hidden_size, dropout=0.4),
-            ResidualBlock(hidden_size, dropout=0.4),
+            ResidualBlock(hidden_size, dropout=0.3),
+            ResidualBlock(hidden_size, dropout=0.3),
             
             # Compression layers
             nn.Linear(hidden_size, hidden_size // 2),
@@ -119,5 +119,54 @@ class TextClassificationPretrainedModel(nn.Module):
         if labels is not None:
             loss = nn.CrossEntropyLoss()(logits, labels)
         return (loss, logits)
+
+
+class CrossEncoder(nn.Module):
+    def __init__(self, model_name="microsoft/deberta-v3-large", num_labels=1):
+        super().__init__()
+        self.backbone = AutoModel.from_pretrained(model_name)
+        hidden_size = self.backbone.config.hidden_size
+        
+        # Deep classifier với ResidualBlocks - Fixed depth "deep"
+        self.classifier = nn.Sequential(
+            # Initial normalization
+            nn.LayerNorm(hidden_size),
+            
+            # Multiple residual blocks cho deep learning
+            ResidualBlock(hidden_size, dropout=0.1),
+            ResidualBlock(hidden_size, dropout=0.1),
+            ResidualBlock(hidden_size, dropout=0.2),
+            ResidualBlock(hidden_size, dropout=0.2),
+            ResidualBlock(hidden_size, dropout=0.2),
+            
+            # Gradual compression với residual-like structure
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.LayerNorm(hidden_size // 4),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(hidden_size // 4, hidden_size // 8),
+            nn.LayerNorm(hidden_size // 8),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            # Final output layer
+            nn.Linear(hidden_size // 8, num_labels)
+        )
     
-# class CrossEncoderModel(nn.Module):
+    def forward(self, input_ids, attention_mask, labels=None):
+        outputs = self.backbone(input_ids=input_ids, attention_mask=attention_mask)
+        cls_output = outputs.last_hidden_state[:, 0, :]  # lấy [CLS] token
+        logits = self.classifier(cls_output)
+        loss = None
+        if labels is not None:
+            if logits.shape[-1] == 1 or len(logits.shape) == 1:
+                loss = nn.BCEWithLogitsLoss()(logits.view(-1), labels.float())
+            else:
+                loss = nn.CrossEntropyLoss()(logits, labels)
+        return (loss, logits)
