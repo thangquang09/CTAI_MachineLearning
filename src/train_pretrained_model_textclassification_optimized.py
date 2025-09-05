@@ -363,14 +363,19 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
+    parser.add_argument("--model", type=str, default=None, help="Model name to use (overrides config)")
     args = parser.parse_args()
     case = args.case
+    
+    # Use specified model or default from config
+    model_name = args.model if args.model else PretrainedModelConfig.MODEL_NAME
+    print(f"🤖 Using model: {model_name}")
 
     print("\n📊 Loading dataset...")
     dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
 
     tokenizer = AutoTokenizer.from_pretrained(
-        PretrainedModelConfig.MODEL_NAME,
+        model_name,
         use_fast=False,
         trust_remote_code=True,
     )
@@ -408,7 +413,7 @@ if __name__ == "__main__":
 
     # Initialize model (2 classes: fake=0, real=1)
     print("🤖 Initializing TextClassificationPretrainedModel...")
-    model = TextClassificationPretrainedModel(PretrainedModelConfig.MODEL_NAME, num_labels=2)
+    model = TextClassificationPretrainedModel(model_name, num_labels=2)
     
     # Enable gradient checkpointing for memory saving (disable if causing issues)
     # Note: Gradient checkpointing might conflict with DataParallel + gradient accumulation
@@ -530,9 +535,9 @@ if __name__ == "__main__":
         }).sort_values("id")
         
         # Create submission filename
-        model_name = "TextClassificationPretrainedModel"
-        safe_model_name = PretrainedModelConfig.MODEL_NAME.replace("/", "_").replace("-", "_")
-        submission_filename = f"submission_case{case}_{model_name}_{safe_model_name}.csv"
+        model_name_for_file = "TextClassificationPretrainedModel"
+        safe_model_name = model_name.replace("/", "_").replace("-", "_")
+        submission_filename = f"submission_case{case}_{model_name_for_file}_{safe_model_name}.csv"
         
         # Save submission
         submission.to_csv(submission_filename, index=False)

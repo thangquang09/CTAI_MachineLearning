@@ -300,14 +300,19 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
+    parser.add_argument("--model", type=str, default=None, help="Model name to use (overrides config)")
     args = parser.parse_args()
     case = args.case
+    
+    # Use specified model or default from config
+    model_name = args.model if args.model else PretrainedModelConfig.MODEL_NAME
+    print(f"🤖 Using model: {model_name}")
 
     print("\n📊 Loading dataset...")
     dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
 
     tokenizer = AutoTokenizer.from_pretrained(
-        PretrainedModelConfig.MODEL_NAME,
+        model_name,
         use_fast=False,
         trust_remote_code=True,
     )
@@ -359,7 +364,7 @@ if __name__ == "__main__":
 
     # Initialize model
     print("🤖 Initializing SiamesePretrainedModel...")
-    model = SiamesePretrainedModel(PretrainedModelConfig.MODEL_NAME)
+    model = SiamesePretrainedModel(model_name)
     
     # Disable gradient checkpointing to avoid conflicts with DataParallel + gradient accumulation
     if hasattr(model.backbone, 'gradient_checkpointing_enable'):
@@ -482,9 +487,9 @@ if __name__ == "__main__":
         }).sort_values("id")
         
         # Create submission filename
-        model_name = "SiamesePretrainedModel"
-        safe_model_name = PretrainedModelConfig.MODEL_NAME.replace("/", "_").replace("-", "_")
-        submission_filename = f"submission_case{case}_{model_name}_{safe_model_name}.csv"
+        model_name_for_file = "SiamesePretrainedModel"
+        safe_model_name = model_name.replace("/", "_").replace("-", "_")
+        submission_filename = f"submission_case{case}_{model_name_for_file}_{safe_model_name}.csv"
         
         # Save submission
         submission.to_csv(submission_filename, index=False)
