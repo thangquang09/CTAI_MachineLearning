@@ -13,7 +13,7 @@ EARLY_STOPPING = False  # Tắt early stopping để train full epochs
 
 
 class PretrainedModelConfig:
-    MODEL_NAME = 'microsoft/deberta-v3-base'
+    MODEL_NAME = 'microsoft/deberta-v3-large'
     MAX_LEN = 512  # Giữ nguyên như yêu cầu
     BATCH_SIZE = 4  # Batch size nhỏ để fit memory
     GRADIENT_ACCUMULATION_STEPS = 4  # Effective batch = 4 * 4 = 16
