@@ -447,7 +447,7 @@ if __name__ == "__main__":
         print("\n📊 Evaluating pair classification performance...")
         
         # Load best model (handle DataParallel wrapper)
-        if torch.cuda.device_count() > 1:
+        if hasattr(model, 'module'):
             # Remove DataParallel wrapper for evaluation
             model = model.module
         model.load_state_dict(best_weights)
