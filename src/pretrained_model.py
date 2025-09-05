@@ -119,3 +119,5 @@ class TextClassificationPretrainedModel(nn.Module):
         if labels is not None:
             loss = nn.CrossEntropyLoss()(logits, labels)
         return (loss, logits)
+    
+# class CrossEncoderModel(nn.Module):
