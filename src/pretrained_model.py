@@ -3,7 +3,7 @@ from transformers import AutoModel, AutoTokenizer
 from torch import nn
 
 class ResidualBlock(nn.Module):
-    def __init__(self, hidden_size, dropout=0.1):
+    def __init__(self, hidden_size, dropout=0.3):
         super(ResidualBlock, self).__init__()
         self.linear1 = nn.Linear(hidden_size, hidden_size)
         self.linear2 = nn.Linear(hidden_size, hidden_size)
@@ -36,24 +36,24 @@ class SiamesePretrainedModel(nn.Module):
             nn.Linear(hidden_size * 4, hidden_size),
             nn.LayerNorm(hidden_size),
             nn.GELU(),
-            nn.Dropout(0.1),
+            nn.Dropout(0.3),
             
             # Multiple residual blocks
-            ResidualBlock(hidden_size, dropout=0.1),
-            ResidualBlock(hidden_size, dropout=0.1),
-            ResidualBlock(hidden_size, dropout=0.2),
-            ResidualBlock(hidden_size, dropout=0.2),
+            ResidualBlock(hidden_size, dropout=0.3),
+            ResidualBlock(hidden_size, dropout=0.3),
+            ResidualBlock(hidden_size, dropout=0.4),
+            ResidualBlock(hidden_size, dropout=0.4),
             
             # Compression layers
             nn.Linear(hidden_size, hidden_size // 2),
             nn.LayerNorm(hidden_size // 2),
             nn.GELU(),
-            nn.Dropout(0.1),
+            nn.Dropout(0.3),
             
             nn.Linear(hidden_size // 2, hidden_size // 4),
             nn.LayerNorm(hidden_size // 4),
             nn.GELU(),
-            nn.Dropout(0.1),
+            nn.Dropout(0.3),
             
             nn.Linear(hidden_size // 4, 1)
         )
