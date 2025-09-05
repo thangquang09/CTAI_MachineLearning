@@ -2,6 +2,31 @@ import torch
 from transformers import AutoModel, AutoTokenizer
 from torch import nn
 
+class ResidualBlock(nn.Module):
+    def __init__(self, hidden_size, dropout=0.1):
+        super(ResidualBlock, self).__init__()
+        self.linear1 = nn.Linear(hidden_size, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, hidden_size)
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.norm2 = nn.LayerNorm(hidden_size)
+        self.dropout = nn.Dropout(dropout)
+        self.activation = nn.GELU()
+        
+    def forward(self, x):
+        residual = x
+        x = self.norm1(x)
+        x = self.linear1(x)
+        x = self.activation(x)
+        x = self.dropout(x)
+        
+        # Second sub-layer: linear -> dropout + residual
+        x = self.linear2(x)
+        x = self.dropout(x)
+        x = x + residual  # Residual connection
+        x = self.norm2(x)
+        
+        return x
+
 class SiamesePretrainedModel(nn.Module):
     def __init__(self, model_name):
         super().__init__()
@@ -9,9 +34,28 @@ class SiamesePretrainedModel(nn.Module):
         hidden_size = self.backbone.config.hidden_size
         self.interaction_head = nn.Sequential(
             nn.Linear(hidden_size * 4, hidden_size),
-            nn.ReLU(),
+            nn.LayerNorm(hidden_size),
+            nn.GELU(),
             nn.Dropout(0.1),
-            nn.Linear(hidden_size, 1)
+            
+            # Multiple residual blocks
+            ResidualBlock(hidden_size, dropout=0.1),
+            ResidualBlock(hidden_size, dropout=0.1),
+            ResidualBlock(hidden_size, dropout=0.2),
+            ResidualBlock(hidden_size, dropout=0.2),
+            
+            # Compression layers
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.LayerNorm(hidden_size // 2),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(hidden_size // 2, hidden_size // 4),
+            nn.LayerNorm(hidden_size // 4),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            
+            nn.Linear(hidden_size // 4, 1)
         )
 
     def forward_one(self, input_ids, attention_mask):
@@ -22,7 +66,6 @@ class SiamesePretrainedModel(nn.Module):
         vec_A = self.forward_one(input_ids_A, attention_mask_A)
         vec_B = self.forward_one(input_ids_B, attention_mask_B)
 
-        # 🔑 Cách họ combine features
         diff = vec_A - vec_B
         prod = vec_A * vec_B
         combined_vec = torch.cat((vec_A, vec_B, diff, prod), dim=1)
