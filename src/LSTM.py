@@ -122,9 +122,9 @@ class PairClassifierLSTM(nn.Module):
         # Project to residual dimension
         x = self.input_projection(combined)
         
-        # Pass through residual blocks
-        for residual_block in self.residual_blocks:
-            x = residual_block(x)
+        # # Pass through residual blocks
+        # for residual_block in self.residual_blocks:
+        #     x = residual_block(x)
         
         # Final classification
         return self.classifier(x)
