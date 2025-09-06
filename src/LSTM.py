@@ -56,7 +56,7 @@ class PairClassifierLSTM(nn.Module):
         
         # Interaction layer with more regularization
         # concat_features: 2 * actual_hidden_dim, diff: actual_hidden_dim, product: actual_hidden_dim, abs_diff: actual_hidden_dim
-        interaction_dim = actual_hidden_dim * 5  # 2 + 1 + 1 + 1 = 5
+        interaction_dim = actual_hidden_dim * 4  # 2 + 1 + 1 + 1 = 5
         
         # Deep classifier with improved architecture
         self.input_projection = nn.Sequential(
@@ -114,10 +114,10 @@ class PairClassifierLSTM(nn.Module):
         concat_features = torch.cat([h1, h2], dim=1)
         diff_features = h1 - h2
         product_features = h1 * h2
-        abs_diff_features = torch.abs(h1 - h2)
+        
         
         # Combine all interaction features
-        combined = torch.cat([concat_features, diff_features, product_features, abs_diff_features], dim=1)
+        combined = torch.cat([concat_features, diff_features, product_features], dim=1)
         
         # Project to residual dimension
         x = self.input_projection(combined)
