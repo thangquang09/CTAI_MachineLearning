@@ -35,11 +35,9 @@ def create_submission(model, test_dataset, vocabulary, device, case, model_name=
     
     # Load test dataset from HuggingFace
     dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
-    
-    if case == 1:
-        test_df = pd.DataFrame(dataset["test_case1"])
-    else:
-        test_df = pd.DataFrame(dataset["test_case2"])
+   
+    test_df = dataset['test'].to_pandas()
+    test_df['label'] = -1
     
     # Get test dataloader
     test_dataloader = DataLoader(test_dataset, batch_size=LSTMConfig.BATCH_SIZE, shuffle=False)
@@ -61,9 +59,9 @@ def create_submission(model, test_dataset, vocabulary, device, case, model_name=
     # Create submission dataframe
     submission_df = pd.DataFrame({
         'id': test_df['id'],
-        'label': predictions
+        'real_text_id': predictions
     })
-    
+        
     # Save submission
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     submission_path = f"submission_lstm_textpair_case{case}_{model_name}_{timestamp}.csv"
