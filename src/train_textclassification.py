@@ -1,8 +1,8 @@
 import argparse
-import datetime
 import os
 import time
 import warnings
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -94,7 +94,7 @@ def create_submission(model, test_dataset, vocabulary, device, case, model_name=
     })
     
     # Save submission
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     submission_path = f"submission_lstm_textclass_case{case}_{model_name}_{timestamp}.csv"
     submission_df.to_csv(submission_path, index=False)
     
@@ -409,7 +409,7 @@ def main():
 
     # Save both models
     os.makedirs("models", exist_ok=True)
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model_name = model.module._get_name() if hasattr(model, 'module') else model._get_name()
 
     # Model 1: Best validation loss
@@ -489,7 +489,7 @@ def main():
     plt.tight_layout()
 
     # Save plots
-    timestamp_plot = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp_plot = datetime.now().strftime("%Y%m%d_%H%M%S")
     plot_path = os.path.join("plots", f"enhanced_lstm_textclass_case{case}_{timestamp_plot}.png")
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()

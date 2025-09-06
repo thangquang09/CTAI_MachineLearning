@@ -30,31 +30,31 @@ class PretrainedModelConfig:
 
 class LSTMConfig:
     VOCAB_SIZE = 50000  # Will be set dynamically based on dataset
-    EMBEDDING_DIM = 512
-    HIDDEN_DIM = 512
+    EMBEDDING_DIM = 256  # Reduced for less overfitting
+    HIDDEN_DIM = 512     # Reduced for better generalization
     OUTPUT_DIM = 1
-    NUM_LAYERS = 3
+    NUM_LAYERS = 2       # Reduced layers to prevent overfitting
     
-    # Training parameters
-    BATCH_SIZE = 32
-    NUM_EPOCHS = 100
-    LEARNING_RATE = 1e-3
-    WEIGHT_DECAY = 1e-4
+    # Training parameters - more conservative
+    BATCH_SIZE = 16      # Smaller batch for better generalization
+    NUM_EPOCHS = 50      # Reduced epochs
+    LEARNING_RATE = 5e-4 # Lower learning rate for stability
+    WEIGHT_DECAY = 1e-3  # Increased weight decay for regularization
     
-    # Regularization
-    EMBEDDING_DROPOUT = 0.2
-    LSTM_DROPOUT = 0.3
+    # Stronger regularization
+    EMBEDDING_DROPOUT = 0.3
+    LSTM_DROPOUT = 0.4
     CLASSIFIER_DROPOUT = 0.5
     
     # Architecture parameters
     BIDIRECTIONAL = True
     USE_ATTENTION = True
-    NUM_RESIDUAL_BLOCKS = 4
-    RESIDUAL_DROPOUT = 0.3
+    NUM_RESIDUAL_BLOCKS = 3  # Reduced blocks
+    RESIDUAL_DROPOUT = 0.4   # Increased dropout
     
-    # Early stopping
-    EARLY_STOPPING_PATIENCE = 10
-    EARLY_STOPPING_DELTA = 0.001
+    # Early stopping - more aggressive
+    EARLY_STOPPING_PATIENCE = 7  # Reduced patience
+    EARLY_STOPPING_DELTA = 0.005 # Increased delta for stricter improvement
     
     # Device and optimization
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'

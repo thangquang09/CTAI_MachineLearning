@@ -1,8 +1,8 @@
 import argparse
-import datetime
 import os
 import time
 import warnings
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -65,7 +65,7 @@ def create_submission(model, test_dataset, vocabulary, device, case, model_name=
     })
     
     # Save submission
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     submission_path = f"submission_lstm_textpair_case{case}_{model_name}_{timestamp}.csv"
     submission_df.to_csv(submission_path, index=False)
     
@@ -143,7 +143,12 @@ def train(
             predicted = (torch.sigmoid(outputs.squeeze(1)) > 0.5).float()
             total += labels.size(0)
             running_correct += (predicted == labels).sum().item()
+            
             loss.backward()
+            
+            # Gradient clipping for stability
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            
             optimizer.step()
 
         epoch_accuracy = 100 * running_correct / total
@@ -253,17 +258,19 @@ def main():
     print(f"   Total parameters: {total_params:,}")
     print(f"   Trainable parameters: {trainable_params:,}")
 
-    # Training setup
-    criterion = nn.BCEWithLogitsLoss()
+    # Training setup with improved regularization
+    criterion = nn.BCEWithLogitsLoss()  # Standard BCE loss
     optimizer = torch.optim.AdamW(
         model.parameters(), 
         lr=LSTMConfig.LEARNING_RATE,
-        weight_decay=LSTMConfig.WEIGHT_DECAY
+        weight_decay=LSTMConfig.WEIGHT_DECAY,
+        betas=(0.9, 0.999),
+        eps=1e-8
     )
     scheduler = ReduceLROnPlateau(
         optimizer, "min", 
-        factor=LSTMConfig.SCHEDULER_FACTOR, 
-        patience=LSTMConfig.SCHEDULER_PATIENCE
+        factor=0.5,  # More aggressive reduction
+        patience=3,  # Reduce patience
     )
 
     # Train model

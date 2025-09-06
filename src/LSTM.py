@@ -30,24 +30,18 @@ class ResidualBlock(nn.Module):
 
 
 class PairClassifierLSTM(nn.Module):
-    """Enhanced LSTM for text pair classification with ResidualBlocks"""
+    """Enhanced LSTM for text pair classification with ResidualBlocks and improved regularization"""
     def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, 
-                 num_layers=3, num_residual_blocks=4, dropout=0.3, 
-                 embedding_dropout=0.2, residual_dropout=0.3):
+                 num_layers=3, num_residual_blocks=3, dropout=0.4, 
+                 embedding_dropout=0.3, residual_dropout=0.4):
         super(PairClassifierLSTM, self).__init__()
         
-        # Embedding layer
+        # Embedding layer with improved regularization
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
         self.embedding_dropout = nn.Dropout(embedding_dropout)
         
-        # Bidirectional LSTM
-        self.lstm1 = nn.LSTM(
-            embedding_dim, hidden_dim, 
-            batch_first=True, bidirectional=True, 
-            dropout=dropout if num_layers > 1 else 0.0, 
-            num_layers=num_layers
-        )
-        self.lstm2 = nn.LSTM(
+        # Shared LSTM encoder (using same LSTM for both texts to reduce parameters)
+        self.lstm_encoder = nn.LSTM(
             embedding_dim, hidden_dim, 
             batch_first=True, bidirectional=True, 
             dropout=dropout if num_layers > 1 else 0.0, 
@@ -57,46 +51,76 @@ class PairClassifierLSTM(nn.Module):
         # With bidirectional, hidden_dim doubles
         actual_hidden_dim = hidden_dim * 2
         
-        # Deep classifier with ResidualBlocks
-        self.input_projection = nn.Linear(actual_hidden_dim * 4, actual_hidden_dim)
-        self.input_norm = nn.LayerNorm(actual_hidden_dim)
+        # Add batch normalization for stability
+        self.lstm_norm = nn.BatchNorm1d(actual_hidden_dim)
         
-        # Multiple residual blocks
+        # Interaction layer with more regularization
+        # concat_features: 2 * actual_hidden_dim, diff: actual_hidden_dim, product: actual_hidden_dim, abs_diff: actual_hidden_dim
+        interaction_dim = actual_hidden_dim * 5  # 2 + 1 + 1 + 1 = 5
+        
+        # Deep classifier with improved architecture
+        self.input_projection = nn.Sequential(
+            nn.Linear(interaction_dim, actual_hidden_dim),
+            nn.BatchNorm1d(actual_hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout)
+        )
+        
+        # Reduced number of residual blocks for less overfitting
         self.residual_blocks = nn.ModuleList([
             ResidualBlock(actual_hidden_dim, residual_dropout) 
             for _ in range(num_residual_blocks)
         ])
         
-        # Final classification layers
+        # Progressive dimension reduction with stronger regularization
         self.classifier = nn.Sequential(
             nn.Linear(actual_hidden_dim, actual_hidden_dim // 2),
-            nn.LayerNorm(actual_hidden_dim // 2),
+            nn.BatchNorm1d(actual_hidden_dim // 2),
             nn.GELU(),
-            nn.Dropout(dropout),
+            nn.Dropout(0.5),
+            
             nn.Linear(actual_hidden_dim // 2, actual_hidden_dim // 4),
-            nn.LayerNorm(actual_hidden_dim // 4),
+            nn.BatchNorm1d(actual_hidden_dim // 4),
             nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(actual_hidden_dim // 4, output_dim)
+            nn.Dropout(0.5),
+            
+            nn.Linear(actual_hidden_dim // 4, actual_hidden_dim // 8),
+            nn.BatchNorm1d(actual_hidden_dim // 8),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            
+            nn.Linear(actual_hidden_dim // 8, output_dim)
         )
     
+    def encode_sequence(self, seq):
+        """Encode a single sequence"""
+        emb = self.embedding_dropout(self.embedding(seq))
+        lstm_out, (hidden, _) = self.lstm_encoder(emb)
+        
+        # Use last hidden state (concat forward and backward)
+        hidden = torch.cat((hidden[-2, :, :], hidden[-1, :, :]), dim=1)
+        
+        # Apply batch normalization for stability
+        hidden = self.lstm_norm(hidden)
+        
+        return hidden
+    
     def forward(self, seq1, seq2):
-        # Embed and encode sequences
-        emb1 = self.embedding_dropout(self.embedding(seq1))
-        emb2 = self.embedding_dropout(self.embedding(seq2))
+        # Encode both sequences using shared encoder
+        h1 = self.encode_sequence(seq1)
+        h2 = self.encode_sequence(seq2)
         
-        _, (h1, _) = self.lstm1(emb1)
-        _, (h2, _) = self.lstm2(emb2)
+        # Rich interaction features
+        concat_features = torch.cat([h1, h2], dim=1)
+        diff_features = h1 - h2
+        product_features = h1 * h2
+        abs_diff_features = torch.abs(h1 - h2)
         
-        # With bidirectional, concat forward and backward hidden states
-        h1 = torch.cat((h1[-2, :, :], h1[-1, :, :]), dim=1)
-        h2 = torch.cat((h2[-2, :, :], h2[-1, :, :]), dim=1)
-        
-        # Interaction features: concat, difference, element-wise product
-        combined = torch.cat([h1, h2, h1 - h2, h1 * h2], dim=1)
+        # Combine all interaction features
+        combined = torch.cat([concat_features, diff_features, product_features, abs_diff_features], dim=1)
         
         # Project to residual dimension
-        x = self.input_norm(self.input_projection(combined))
+        x = self.input_projection(combined)
         
         # Pass through residual blocks
         for residual_block in self.residual_blocks:
