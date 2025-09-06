@@ -30,7 +30,7 @@ class PretrainedModelConfig:
 
 class LSTMConfig:
     VOCAB_SIZE = 50000  # Will be set dynamically based on dataset
-    EMBEDDING_DIM = 256  # Reduced for less overfitting
+    EMBEDDING_DIM = 512  # Reduced for less overfitting
     HIDDEN_DIM = 512     # Reduced for better generalization
     OUTPUT_DIM = 1
     NUM_LAYERS = 2       # Reduced layers to prevent overfitting
