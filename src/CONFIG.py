@@ -26,3 +26,43 @@ class PretrainedModelConfig:
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     RANDOM_SEED = 42
     AUGMENT = False
+
+
+class LSTMConfig:
+    VOCAB_SIZE = 50000  # Will be set dynamically based on dataset
+    EMBEDDING_DIM = 512
+    HIDDEN_DIM = 512
+    OUTPUT_DIM = 1
+    NUM_LAYERS = 3
+    
+    # Training parameters
+    BATCH_SIZE = 32
+    NUM_EPOCHS = 100
+    LEARNING_RATE = 1e-3
+    WEIGHT_DECAY = 1e-4
+    
+    # Regularization
+    EMBEDDING_DROPOUT = 0.2
+    LSTM_DROPOUT = 0.3
+    CLASSIFIER_DROPOUT = 0.5
+    
+    # Architecture parameters
+    BIDIRECTIONAL = True
+    USE_ATTENTION = True
+    NUM_RESIDUAL_BLOCKS = 4
+    RESIDUAL_DROPOUT = 0.3
+    
+    # Early stopping
+    EARLY_STOPPING_PATIENCE = 10
+    EARLY_STOPPING_DELTA = 0.001
+    
+    # Device and optimization
+    DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+    RANDOM_SEED = 42
+    
+    # Multi-GPU
+    USE_MULTI_GPU = True
+    
+    # Scheduler
+    SCHEDULER_FACTOR = 0.5
+    SCHEDULER_PATIENCE = 3

@@ -232,5 +232,27 @@ def get_dataset_1(case: int = 1):
     print(f"Val dataset size: {len(val_dataset)} (từ {len(val_df)} cặp)")
     
     return train_dataset, val_dataset, vocabulary
+
+
+def get_test_dataset(case=1, vocabulary=None):
+    """
+    Load test dataset for creating submissions
+    Returns a dataset compatible with text pair models
+    """
+    dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
     
+    test_df = dataset['test'].to_pandas() 
     
+    # Apply preprocessing
+    test_df["file_1"] = test_df["file_1"].apply(preprocessing)
+    test_df["file_2"] = test_df["file_2"].apply(preprocessing)
+    
+    # Create dummy labels for test set (they will be ignored)
+    test_df["label"] = -1
+    
+    # Create dataset using the TextComparisonDataset
+    test_dataset = TextComparisonDataset(test_df, vocabulary)
+    
+    print(f"Test dataset size: {len(test_dataset)} pairs")
+    
+    return test_dataset
