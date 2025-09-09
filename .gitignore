@@ -209,6 +209,6 @@ __marimo__/
 train_dev/
 
 
-data/fake-or-real-the-impostor-hunt
+# data/fake-or-real-the-impostor-hunt
 catboost_info/
 models/*
