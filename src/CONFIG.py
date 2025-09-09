@@ -30,31 +30,31 @@ class PretrainedModelConfig:
 
 class LSTMConfig:
     VOCAB_SIZE = 50000  # Will be set dynamically based on dataset
-    EMBEDDING_DIM = 512  # Reduced for less overfitting
-    HIDDEN_DIM = 512     # Reduced for better generalization
+    EMBEDDING_DIM = 512  # Keep sufficient capacity
+    HIDDEN_DIM = 512     # Keep sufficient capacity
     OUTPUT_DIM = 1
-    NUM_LAYERS = 2       # Reduced layers to prevent overfitting
+    NUM_LAYERS = 2       # Keep simplified
     
-    # Training parameters - more conservative
-    BATCH_SIZE = 16      # Smaller batch for better generalization
-    NUM_EPOCHS = 50      # Reduced epochs
-    LEARNING_RATE = 5e-4 # Lower learning rate for stability
-    WEIGHT_DECAY = 1e-3  # Increased weight decay for regularization
+    # Training parameters - more aggressive for learning
+    BATCH_SIZE = 16      # Good size
+    NUM_EPOCHS = 50      # Sufficient epochs
+    LEARNING_RATE = 2e-3 # Higher learning rate to overcome underfit
+    WEIGHT_DECAY = 1e-5  # Very low weight decay to allow learning
     
-    # Stronger regularization
-    EMBEDDING_DROPOUT = 0.3
-    LSTM_DROPOUT = 0.4
-    CLASSIFIER_DROPOUT = 0.5
+    # Reduced regularization for text classification
+    EMBEDDING_DROPOUT = 0.1  # Much lower
+    LSTM_DROPOUT = 0.2       # Much lower  
+    CLASSIFIER_DROPOUT = 0.3 # Much lower
     
     # Architecture parameters
     BIDIRECTIONAL = True
     USE_ATTENTION = True
-    NUM_RESIDUAL_BLOCKS = 3  # Reduced blocks
-    RESIDUAL_DROPOUT = 0.4   # Increased dropout
+    NUM_RESIDUAL_BLOCKS = 1  # Very minimal residual blocks
+    RESIDUAL_DROPOUT = 0.2   # Lower dropout
     
-    # Early stopping - more aggressive
-    EARLY_STOPPING_PATIENCE = 7  # Reduced patience
-    EARLY_STOPPING_DELTA = 0.005 # Increased delta for stricter improvement
+    # Early stopping - less aggressive
+    EARLY_STOPPING_PATIENCE = 10  # More patience
+    EARLY_STOPPING_DELTA = 0.001  # Lower delta
     
     # Device and optimization
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -63,6 +63,6 @@ class LSTMConfig:
     # Multi-GPU
     USE_MULTI_GPU = True
     
-    # Scheduler
-    SCHEDULER_FACTOR = 0.5
-    SCHEDULER_PATIENCE = 3
+    # Scheduler - more gentle
+    SCHEDULER_FACTOR = 0.7   # Less aggressive reduction
+    SCHEDULER_PATIENCE = 5   # More patience
