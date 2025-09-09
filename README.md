@@ -44,6 +44,7 @@ uv sync --quiet
     ```bash
     uv run src/train_pretrained_model.py --model <model_name>
     ```
+    model_name tốt nhất là `microsoft/deberta-v3-large`
 
 4. Code chạy fine-tune pretrained model cho hướng tiếp cận text classification là [train_pretrained_model.py](src/train_pretrained_model_textclassification.py)
 
