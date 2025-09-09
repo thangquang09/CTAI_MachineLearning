@@ -3,6 +3,7 @@ import string
 import os
 import time
 import argparse
+import gc
 from datetime import datetime
 
 import matplotlib.pyplot as plt
@@ -126,6 +127,11 @@ def evaluate(model, valid_dataloader, device):
             labels = batch["labels"].to(device)
 
             loss, logits = model(input_ids, attention_mask, labels)
+            
+            # Handle DataParallel loss (average across GPUs)
+            if torch.cuda.device_count() > 1:
+                loss = loss.mean()
+            
             total_loss += loss.item()
 
             predicted = torch.argmax(logits, dim=1)
@@ -148,6 +154,13 @@ def train_model(
     early_stopping_patience=None,
     use_early_stopping=True,
 ):
+    # Enable multi-GPU if available
+    if torch.cuda.device_count() > 1:
+        print(f"🚀 Using {torch.cuda.device_count()} GPUs for training!")
+        model = torch.nn.DataParallel(model)
+    else:
+        print(f"🔧 Using single GPU: {device}")
+    
     train_losses = []
     train_accuracies = []
     test_losses = []
@@ -156,6 +169,11 @@ def train_model(
     best_weights = None
     best_test_loss = float("inf")
     epochs_no_improve = 0
+    
+    # Get gradient accumulation steps from config
+    accumulation_steps = getattr(PretrainedModelConfig, 'GRADIENT_ACCUMULATION_STEPS', 1)
+    print(f"📊 Gradient accumulation steps: {accumulation_steps}")
+    print(f"📊 Effective batch size: {PretrainedModelConfig.BATCH_SIZE * accumulation_steps}")
 
     for epoch in range(max_epoch):
         model.train()
@@ -163,22 +181,40 @@ def train_model(
         all_predictions = []
         all_labels = []
         epoch_start_time = time.time()
+        
+        # Zero gradients at the beginning of each epoch
+        optimizer.zero_grad()
 
         for i, batch in enumerate(train_dataloader):
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             labels = batch["labels"].to(device)
 
-            optimizer.zero_grad()
             loss, logits = model(input_ids, attention_mask, labels)
             
-            running_loss += loss.item()
+            # Handle DataParallel loss (average across GPUs)
+            if torch.cuda.device_count() > 1:
+                loss = loss.mean()  # DataParallel returns loss for each GPU
+            
+            # Scale loss for gradient accumulation
+            loss = loss / accumulation_steps
+            
+            running_loss += loss.item() * accumulation_steps
             predicted = torch.argmax(logits, dim=1)
             all_predictions.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             
             loss.backward()
+            
+            # Only step optimizer every accumulation_steps
+            if (i + 1) % accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+
+        # Handle remaining gradients if batch doesn't divide evenly
+        if (len(train_dataloader) % accumulation_steps) != 0:
             optimizer.step()
+            optimizer.zero_grad()
 
         epoch_accuracy = accuracy_score(all_labels, all_predictions) * 100
         epoch_loss = running_loss / len(train_dataloader)
@@ -188,7 +224,11 @@ def train_model(
 
         if test_loss < best_test_loss:
             best_test_loss = test_loss
-            best_weights = model.state_dict()
+            # Handle DataParallel model state dict
+            if torch.cuda.device_count() > 1:
+                best_weights = model.module.state_dict()
+            else:
+                best_weights = model.state_dict()
             epochs_no_improve = 0
         else:
             epochs_no_improve += 1
@@ -292,16 +332,55 @@ def eval_text_pair(model, tokenizer, pair_df, device, max_len, make_submission=F
 
 
 if __name__ == "__main__":
+    # === MEMORY OPTIMIZATION SETUP ===
+    print("🔧 Setting up memory optimization...")
+    
+    # Suppress DataParallel scalar gathering warning
+    import warnings
+    warnings.filterwarnings("ignore", message="Was asked to gather along dimension 0")
+    
+    # Enable memory efficient attention if available
+    try:
+        torch.backends.cuda.enable_flash_sdp(True)
+        print("✅ Flash Attention enabled")
+    except Exception:
+        print("⚠️ Flash Attention not available")
+    
+    # Set memory allocation strategy
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'expandable_segments:True'
+    
+    # Clear GPU cache
+    torch.cuda.empty_cache()
+    gc.collect()
+    
+    # Print GPU information
+    if torch.cuda.is_available():
+        print(f"🔍 Available GPUs: {torch.cuda.device_count()}")
+        for i in range(torch.cuda.device_count()):
+            gpu_name = torch.cuda.get_device_name(i)
+            gpu_memory = torch.cuda.get_device_properties(i).total_memory / 1024**3
+            print(f"   GPU {i}: {gpu_name} ({gpu_memory:.1f} GB)")
+    
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
+    parser.add_argument("--model", type=str, default=None, help="Model name to use (overrides config)")
+    parser.add_argument("--batchsize", type=int, default=None, help="Batch size for training (overrides config)")
     args = parser.parse_args()
     case = args.case
+    
+    # Use specified model or default from config
+    model_name = args.model if args.model else PretrainedModelConfig.MODEL_NAME
+    print(f"🤖 Using model: {model_name}")
+    
+    # Use specified batch size or default from config
+    batch_size = args.batchsize if args.batchsize else PretrainedModelConfig.BATCH_SIZE
+    print(f"📦 Using batch size: {batch_size}")
 
     print("\n📊 Loading dataset...")
     dataset = load_dataset("thangquang09/fake-new-imposter-hunt-in-texts")
 
     tokenizer = AutoTokenizer.from_pretrained(
-        PretrainedModelConfig.MODEL_NAME,
+        model_name,
         use_fast=False,
         trust_remote_code=True,
     )
@@ -329,16 +408,25 @@ if __name__ == "__main__":
     valid_dataset = TextClassificationDataset(valid_textclf_df, tokenizer, PretrainedModelConfig.MAX_LEN)
     
     train_loader = DataLoader(
-        train_dataset, batch_size=PretrainedModelConfig.BATCH_SIZE, shuffle=True
+        train_dataset, batch_size=batch_size, shuffle=True
     )
     valid_loader = DataLoader(
-        valid_dataset, batch_size=PretrainedModelConfig.BATCH_SIZE, shuffle=False
+        valid_dataset, batch_size=batch_size, shuffle=False
     )
 
     print(f"Train size: {len(train_dataset)} | Valid size: {len(valid_dataset)}")
 
     # Initialize model (2 classes: fake=0, real=1)
-    model = TextClassificationPretrainedModel(PretrainedModelConfig.MODEL_NAME, num_labels=2)
+    print("🤖 Initializing TextClassificationPretrainedModel...")
+    model = TextClassificationPretrainedModel(model_name, num_labels=2)
+    
+    # Enable gradient checkpointing for memory saving (disable if causing issues)
+    # Note: Gradient checkpointing might conflict with DataParallel + gradient accumulation
+    if hasattr(model.backbone, 'gradient_checkpointing_enable'):
+        # Temporarily disable gradient checkpointing to avoid backward graph conflicts
+        # model.backbone.gradient_checkpointing_enable()
+        print("⚠️ Gradient checkpointing disabled to avoid conflicts")
+    
     device = torch.device(PretrainedModelConfig.DEVICE)
     model.to(device)
 
@@ -363,6 +451,29 @@ if __name__ == "__main__":
         early_stopping_patience=PretrainedModelConfig.EARLY_STOPPING_PATIENCE,
         use_early_stopping=True,
     )
+
+    # === EVALUATION ON PAIR CLASSIFICATION DURING TRAINING ===
+    if best_weights:
+        print("\n📊 Evaluating pair classification performance...")
+        
+        # Load best model (handle DataParallel wrapper)
+        if hasattr(model, 'module'):
+            # Remove DataParallel wrapper for evaluation
+            model = model.module
+        model.load_state_dict(best_weights)
+        model.eval()
+        
+        # Evaluate on train pairs
+        train_pair_accuracy = eval_text_pair(
+            model, tokenizer, train_df, device, PretrainedModelConfig.MAX_LEN
+        )
+        print(f"🎯 Train Pair Accuracy: {train_pair_accuracy:.4f}")
+        
+        # Evaluate on validation pairs
+        valid_pair_accuracy = eval_text_pair(
+            model, tokenizer, valid_df, device, PretrainedModelConfig.MAX_LEN
+        )
+        print(f"🎯 Validation Pair Accuracy: {valid_pair_accuracy:.4f}")
 
     # Save best model
     if best_weights:
@@ -412,29 +523,11 @@ if __name__ == "__main__":
 
     print(f"Plots saved to: {plot_path}")
 
-    # === EVALUATION ON PAIR CLASSIFICATION ===
+    # === MAKE SUBMISSION ===
     if best_weights:
-        print("\n📊 Evaluating pair classification performance...")
-        
-        # Load best model
-        model.load_state_dict(best_weights)
-        model.eval()
-        
-        # Evaluate on train pairs
-        train_pair_accuracy = eval_text_pair(
-            model, tokenizer, train_df, device, PretrainedModelConfig.MAX_LEN
-        )
-        print(f"🎯 Train Pair Accuracy: {train_pair_accuracy:.4f}")
-        
-        # Evaluate on validation pairs
-        valid_pair_accuracy = eval_text_pair(
-            model, tokenizer, valid_df, device, PretrainedModelConfig.MAX_LEN
-        )
-        print(f"🎯 Validation Pair Accuracy: {valid_pair_accuracy:.4f}")
-
-        # === MAKE SUBMISSION ===
         print("\n📤 Making predictions on test set...")
         
+        # Model đã được load best weights ở trên rồi, không cần load lại
         # Predict on test set
         predictions = eval_text_pair(
             model, tokenizer, test_df, device, PretrainedModelConfig.MAX_LEN, make_submission=True
@@ -447,9 +540,9 @@ if __name__ == "__main__":
         }).sort_values("id")
         
         # Create submission filename
-        model_name = "TextClassificationPretrainedModel"
-        safe_model_name = PretrainedModelConfig.MODEL_NAME.replace("/", "_").replace("-", "_")
-        submission_filename = f"submission_case{case}_{model_name}_{safe_model_name}.csv"
+        model_name_for_file = "TextClassificationPretrainedModel"
+        safe_model_name = model_name.replace("/", "_").replace("-", "_")
+        submission_filename = f"submission_case{case}_{model_name_for_file}_{safe_model_name}.csv"
         
         # Save submission
         submission.to_csv(submission_filename, index=False)
@@ -467,6 +560,6 @@ if __name__ == "__main__":
         print(f"📤 Submission: {submission_filename}")
         print("="*60)
     else:
-        print("\n❌ Cannot evaluate pairs or make submission: no trained model available.")
+        print("\n❌ Cannot make submission: no trained model available.")
         
     print("\n🎉 Training and submission completed!")
