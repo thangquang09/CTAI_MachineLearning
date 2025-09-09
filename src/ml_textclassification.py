@@ -279,13 +279,20 @@ def create_submission(model, embedding_model, test_df, case, results, embedding_
 # === MAIN EXECUTION ===
 if __name__ == "__main__":
     # === CONFIGURATION ===
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Train machine learning models for text classification")
     parser.add_argument("--case", type=int, default=1, help="Case number (1 or 2)")
     parser.add_argument(
         "--embedding_model", 
         type=str, 
         default="intfloat/multilingual-e5-small", 
         help="Embedding model name (HuggingFace) or path to fine-tuned model"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="logistic",
+        choices=["logistic", "randomforest", "catboost"],
+        help="Model to train: 'logistic' for LogisticRegression, 'randomforest' for RandomForestClassifier, 'catboost' for CatBoostClassifier"
     )
 
     args = parser.parse_args()
@@ -294,10 +301,14 @@ if __name__ == "__main__":
     embedding_model_path = args.embedding_model
     merge_option = False
     
-    # 🎯 CHỌN MODEL
-    # model_class = RandomForestClassifier      # 🌲 Random Forest
-    model_class = LogisticRegression        # 📈 Logistic Regression  
-    # model_class = CatBoostClassifier        # 🚀 CatBoost
+    # 🎯 CHỌN MODEL dựa trên argument
+    model_mapping = {
+        "logistic": LogisticRegression,
+        "randomforest": RandomForestClassifier,
+        "catboost": CatBoostClassifier
+    }
+    
+    model_class = model_mapping[args.model]
     
     print(f"🚀 Starting training pipeline with {get_model_config(model_class)['model_name']}")
     
